@@ -1,0 +1,23 @@
+id: vulkan-direct-nv12-opt-in
+patch: 0020-avutil-vulkan-direct-nv12-opt-in.patch
+based_on: n8.1.2
+status: experimental-opt-in
+upstream:
+  commits:
+    - 25e187f84949
+    - 1d14f9f8c3e4efb32000cb463ebb635ad6f2adb0
+dependencies:
+  - 0019-avutil-vulkan-vaapi-reverse-sync.patch
+platforms:
+  - linux-vaapi-vulkan
+failure_without_patch:
+  - Writable imported NV12 lacks the render attachment usage and separate-plane description needed by libplacebo.
+  - Synchronous reverse handoff and one-slot reuse serialize the producer and consumer.
+notes:
+  - Explicit ETV_VAAPI_DIRECT_NV12=1 opt-in. The default retains patch 0019's CPU wait.
+  - This adapts the upstream timeline bridge and pool-depth approach to FFmpeg 8; it is not an unchanged backport.
+  - Sync-file failures retain the synchronous wait. Pixels stay on the GPU in both routes.
+  - No independent throughput gain is claimed for the synchronization changes.
+  - Intel ANV/iHD 1080p 8-bit SDR NV12 is the validated trial; other drivers and formats remain unverified.
+  - The optional libplacebo producer-storage patch is documented in docs/direct-nv12.md.
+remove_when: A supported FFmpeg release supplies the writable import and reverse synchronization behavior used by this opt-in.
