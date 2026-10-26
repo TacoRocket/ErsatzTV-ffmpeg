@@ -1,0 +1,28 @@
+id: tonemap-vaapi-link-hdr-metadata
+patch: 0026-avfilter-tonemap-vaapi-use-link-hdr-metadata.patch
+based_on: n8.1.2
+status: experimental-fork-only
+upstream:
+  issue: null
+  commits: []
+dependencies: []
+platforms:
+  - linux-vaapi
+failure_without_patch:
+  - "HDR10 replay stops after 80 frames, or before video output after a seek, when frame mastering metadata is absent despite available input-link metadata."
+  - "SDR raw output inherits HDR mastering/content-light metadata through the output link."
+success_with_patch:
+  - "720-frame startup and seek replays complete; the first 48 raw NV12 frames match the control exactly."
+  - "SDR output-link mastering/content-light metadata is removed, matching the existing frame cleanup."
+notes:
+  - "Frame metadata has precedence; input-link metadata is used only when the corresponding frame data is absent. No fabricated mastering display or previous-frame cache."
+  - "No NV12 shader, encoder, or application configuration changes."
+  - "Validation limits and upstream source check: docs/vaapi-hdr-metadata.md."
+last_verified:
+  version: n8.1.2
+  date: 2026-10-26
+  how: >-
+    Isolated reduced-feature Linux VAAPI/OpenCL builds, same configuration before
+    and after this patch, on Intel Gen12. Direct HEVC HDR10 replay with scaling
+    and low-power H264 encoding. Full packaged runtime and other drivers untested.
+remove_when: "The maintained FFmpeg release supplies equivalent input-link HDR metadata handling and SDR output-link cleanup."
