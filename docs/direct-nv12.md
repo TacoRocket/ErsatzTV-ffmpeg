@@ -92,3 +92,38 @@ has not been completed for this checkpoint. Default CI does not enable that
 optional build. The inherited half-float rounding limitation and the separate
 software-Vulkan rounding investigation remain; this patch does not claim to fix
 them. Disabling `ETV_INLINE_NV12_RTZ` retains the original output path.
+
+## Single-pass NV12 checkpoint (point chroma, in progress)
+
+The third libplacebo patch adds a speed mode. With `ETV_INLINE_NV12_RTZ=1` and
+`ETV_INLINE_NV12_CHROMA=point`, the producer pass renders Y straight into the
+destination Y plane and stores UV from the top-left sample of each 2x2 block.
+That is the chroma placement FFmpeg's `scale_vulkan=format=nv12` already uses in
+the current RGBA route. No half-float scratch image and no separate plane passes
+remain, so the RGBA write plus `scale_vulkan` conversion is replaced by zero
+extra passes. Bars, padding offsets and dither origin follow patch 0002. Without
+the chroma opt-in, the 0001/0002 behavior (Mitchell chroma) is unchanged, and
+unsupported layouts keep the original output path.
+
+Picture check, same fixtures and chain as above, 8 raw NV12 frames per layout:
+
+| Layout | Y vs RGBA route | UV vs RGBA route | Y vs Mitchell direct |
+| --- | --- | --- | --- |
+| 1920x1080 | max 2, mean 0.23 | max 5, mean 0.15 | max 1, mean 0.04 |
+| 1440x1080, x=240 | max 1, mean 0.17 | max 2, mean 0.20 | max 1, mean 0.03 |
+| 1920x800, y=140 | max 2, mean 0.21 | max 5, mean 0.18 | max 1, mean 0.03 |
+
+Bars are exactly Y=16, UV=128 and picture edges line up with the RGBA route.
+Single-pass is not byte-identical to RGBA: the RGBA route quantizes RGB to 8 bits
+before converting, single-pass converts at full precision and dithers once.
+
+Timing, same five-worker x 720-frame harness, slowest FFmpeg runtime. Full frame
+so far: RGBA 27.168 s (one batch), Mitchell direct 28.147 s (one batch),
+single-pass 23.945 s and 24.262 s (two batches), about 12.7% more throughput than
+RGBA. The second-round RGBA/Mitchell batches and the padded layouts are pending;
+they yield to other GPU work and will be added here.
+
+Limits: point chroma matches the current RGBA route's chroma, not Mitchell; it is
+the speed mode, and Mitchell remains the quality mode. One Intel i3-1220P/ANV,
+synthetic fixtures, libplacebo built with glslang (the optional Docker build uses
+shaderc and was not rebuilt for this checkpoint).

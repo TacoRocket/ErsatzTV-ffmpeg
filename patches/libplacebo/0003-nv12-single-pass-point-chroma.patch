@@ -1,0 +1,101 @@
+From: TacoRocket
+Subject: [PATCH] renderer: single-pass NV12 output with point-sampled chroma
+
+Apply after 0001-opt-in-nv12-producer-storage.patch and
+0002-nv12-padded-output.patch on libplacebo v7.360.1.
+
+With ETV_INLINE_NV12_RTZ=1 and ETV_INLINE_NV12_CHROMA=point, the producer
+pass renders Y directly into the destination Y plane and stores UV from the
+top-left sample of each 2x2 block, the chroma placement that FFmpeg's
+scale_vulkan=format=nv12 already uses. No half-float scratch image or
+separate plane passes remain, so the RGBA + scale_vulkan conversion step is
+replaced by zero extra passes. Bars, padding offsets and dither origin follow
+0002. Without the chroma opt-in, 0001/0002 behavior (Mitchell chroma) is
+unchanged. Unsupported layouts keep the original output path.
+
+Based on libplacebo cee9b076f2c63104ccfd497fa79c39a867293ec4, LGPL-2.1-or-later.
+---
+--- a/src/renderer.c
++++ b/src/renderer.c
+@@ -2661,6 +2661,8 @@
+     const pl_rect2d rect = pass->dst_rect;
+     const bool translated = rect.x0 || rect.y0;
+     bool output_hook = false;
++    const char *chroma_env = getenv("ETV_INLINE_NV12_CHROMA");
++    const bool point_chroma = chroma_env && !strcmp(chroma_env, "point");
+ #if PL_HAVE_VULKAN
+     pl_vulkan vk = pl_vulkan_get(rr->gpu);
+     if (!vk || !vk->features || !vk->features->features.fragmentStoresAndAtomics)
+@@ -2682,6 +2684,8 @@
+         uv->components != 2 || uv->component_mapping[0] != 1 ||
+         uv->component_mapping[1] != 2 || y->shift_x || y->shift_y ||
+         !y->texture->params.storable ||
++        (point_chroma && (!uv->texture->params.storable ||
++                          !y->texture->params.renderable)) ||
+         y->texture->params.format->type != PL_FMT_UNORM ||
+         y->texture->params.format->component_depth[0] != 8 ||
+         uv->texture->params.format->type != PL_FMT_UNORM ||
+@@ -2710,6 +2714,53 @@
+         goto unsupported;
+     }
+ 
++    if (point_chroma) {
++        // Single pass: Y is this pass's render target and UV takes the
++        // top-left sample of each 2x2 block (the chroma placement that
++        // scale_vulkan=format=nv12 uses), so no scratch image or separate
++        // plane passes remain.
++        pl_shader sh = img_sh(pass, img);
++        const bool comp = pl_shader_is_compute(sh);
++        // Compute producers see rectangle-local coordinates; fragment
++        // producers drawing into the Y plane see final-frame coordinates.
++        const int lx = comp ? 0 : rect.x0, ly = comp ? 0 : rect.y0;
++        ident_t uv_out = sh_desc(sh, (struct pl_shader_desc) {
++            .binding.object = uv->texture,
++            .desc = {
++                .name = "nv12_uv_output",
++                .type = PL_DESC_STORAGE_IMG,
++                .access = PL_DESC_ACCESS_WRITEONLY,
++            },
++        });
++        if (params->dither_params) {
++            struct pl_dither_params dparams = *params->dither_params;
++            if (!params->disable_dither_gamma_correction)
++                dparams.transfer = target->color.transfer;
++            sh_dither_at(sh, 8, &rr->dither_state, &dparams,
++                         rect.x0 - lx, rect.y0 - ly);
++        }
++        GLSL("ivec2 inline_local = ivec2(gl_FragCoord.xy) - ivec2(%d, %d);\n"
++             "if (all(greaterThanEqual(inline_local, ivec2(0))) &&\n"
++             "    all(lessThan(inline_local, ivec2(%d, %d)))) {\n"
++             "    ivec2 inline_pos = inline_local + ivec2(%d, %d);\n"
++             "    if (((inline_pos.x | inline_pos.y) & 1) == 0)\n"
++             "        imageStore("$", inline_pos >> 1, vec4(color.gb / "$", 0.0, 1.0));\n"
++             "}\n"
++             "color = vec4(color.r / "$", 0.0, 0.0, 1.0);\n",
++             lx, ly, img->w, img->h, rect.x0, rect.y0,
++             uv_out, SH_FLOAT(scale), SH_FLOAT(scale));
++        sh_describe(sh, "single-pass NV12 Y and point UV output");
++        if (!rr->inline_nv12_logged) {
++            PL_INFO(rr, "ETV_INLINE_NV12_RTZ: accepted chroma=point producer=%s",
++                    comp ? "compute" : "fragment");
++            rr->inline_nv12_logged = true;
++        }
++        if (!pl_dispatch_finish(rr->dp, pl_dispatch_params(
++                .shader = &img->sh, .target = y->texture, .rect = rect)))
++            return -1;
++        return 2;
++    }
++
+     pl_tex tex = get_fbo(pass, img->w, img->h, scratch, 2, PL_DEBUG_TAG);
+     if (!tex)
+         return -1;
+@@ -3000,7 +3051,8 @@
+             return false;
+     }
+ 
+-    for (int p = inline_nv12 ? 1 : 0; p < target->num_planes; p++) {
++    for (int p = inline_nv12 == 2 ? target->num_planes : inline_nv12 ? 1 : 0;
++         p < target->num_planes; p++) {
+         const struct pl_plane *plane = &target->planes[p];
+         float rx = (float) plane->texture->params.w / ref->texture->params.w,
+               ry = (float) plane->texture->params.h / ref->texture->params.h;
