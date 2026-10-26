@@ -1,0 +1,286 @@
+{
+ "timing": {
+  "full/rgba": {
+   "workers": 5,
+   "frames": 720,
+   "slowest_s": [
+    25.661,
+    29.363
+   ],
+   "mean_s": 27.512
+  },
+  "full/inv_native": {
+   "workers": 5,
+   "frames": 720,
+   "slowest_s": [
+    27.813,
+    26.744
+   ],
+   "mean_s": 27.279
+  },
+  "full/inv_match": {
+   "workers": 5,
+   "frames": 720,
+   "slowest_s": [
+    23.204,
+    23.593
+   ],
+   "mean_s": 23.398
+  },
+  "full/inv_match_sync": {
+   "workers": 5,
+   "frames": 720,
+   "slowest_s": [
+    22.979,
+    23.138
+   ],
+   "mean_s": 23.059
+  },
+  "full/inv_match_delayed": {
+   "workers": 5,
+   "frames": 720,
+   "slowest_s": [
+    23.107,
+    23.25
+   ],
+   "mean_s": 23.178
+  },
+  "pillar/rgba": {
+   "workers": 5,
+   "frames": 720,
+   "slowest_s": [
+    21.548,
+    22.066
+   ],
+   "mean_s": 21.807
+  },
+  "pillar/inv_native": {
+   "workers": 5,
+   "frames": 720,
+   "slowest_s": [
+    21.824,
+    21.615
+   ],
+   "mean_s": 21.72
+  },
+  "pillar/inv_match": {
+   "workers": 5,
+   "frames": 720,
+   "slowest_s": [
+    19.24,
+    19.18
+   ],
+   "mean_s": 19.21
+  },
+  "pillar/inv_match_sync": {
+   "workers": 5,
+   "frames": 720,
+   "slowest_s": [
+    18.977,
+    18.896
+   ],
+   "mean_s": 18.937
+  },
+  "pillar/inv_match_delayed": {
+   "workers": 5,
+   "frames": 720,
+   "slowest_s": [
+    18.997,
+    18.62
+   ],
+   "mean_s": 18.809
+  },
+  "letter/rgba": {
+   "workers": 5,
+   "frames": 720,
+   "slowest_s": [
+    21.565,
+    21.862
+   ],
+   "mean_s": 21.713
+  },
+  "letter/inv_native": {
+   "workers": 5,
+   "frames": 720,
+   "slowest_s": [
+    21.193,
+    21.442
+   ],
+   "mean_s": 21.318
+  },
+  "letter/inv_match": {
+   "workers": 5,
+   "frames": 720,
+   "slowest_s": [
+    18.806,
+    18.6
+   ],
+   "mean_s": 18.703
+  },
+  "letter/inv_match_sync": {
+   "workers": 5,
+   "frames": 720,
+   "slowest_s": [
+    18.453,
+    18.429
+   ],
+   "mean_s": 18.441
+  },
+  "letter/inv_match_delayed": {
+   "workers": 5,
+   "frames": 720,
+   "slowest_s": [
+    18.496,
+    18.592
+   ],
+   "mean_s": 18.544
+  },
+  "groot_hdr10/rgba": {
+   "workers": 4,
+   "frames": 720,
+   "slowest_s": [
+    30.502,
+    30.97
+   ],
+   "mean_s": 30.736
+  },
+  "groot_hdr10/inv_native": {
+   "workers": 4,
+   "frames": 720,
+   "slowest_s": [
+    31.908,
+    31.719
+   ],
+   "mean_s": 31.814
+  },
+  "groot_hdr10/inv_match": {
+   "workers": 4,
+   "frames": 720,
+   "slowest_s": [
+    28.827,
+    28.657
+   ],
+   "mean_s": 28.742
+  },
+  "groot_hdr10/inv_match_sync": {
+   "workers": 4,
+   "frames": 720,
+   "slowest_s": [
+    28.857,
+    28.853
+   ],
+   "mean_s": 28.855
+  }
+ },
+ "realtime": [
+  {
+   "case": "groot_hdr10",
+   "route": "inv_match",
+   "streams": 3,
+   "seconds": 60,
+   "busy_mid": {
+    "Render/3D": 62.4,
+    "Video": 62.0,
+    "VideoEnhance": 0.1
+   },
+   "MHz": 1061,
+   "speed_x": [
+    0.999,
+    0.998,
+    0.998
+   ],
+   "exit": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "case": "groot_hdr10",
+   "route": "inv_match_delayed",
+   "streams": 3,
+   "seconds": 60,
+   "busy_mid": {
+    "Render/3D": 62.8,
+    "Video": 62.8,
+    "VideoEnhance": 0.1
+   },
+   "MHz": 1035,
+   "speed_x": [
+    0.998,
+    0.998,
+    0.998
+   ],
+   "exit": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "case": "groot_hdr10",
+   "route": "inv_native",
+   "streams": 3,
+   "seconds": 60,
+   "busy_mid": {
+    "Render/3D": 71.6,
+    "Video": 64.3,
+    "VideoEnhance": 0.1
+   },
+   "MHz": 1066,
+   "speed_x": [
+    0.999,
+    0.998,
+    0.998
+   ],
+   "exit": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "case": "groot_hdr10",
+   "route": "rgba",
+   "streams": 3,
+   "seconds": 60,
+   "busy_mid": {
+    "Render/3D": 71.0,
+    "Video": 64.6,
+    "VideoEnhance": 0.1
+   },
+   "MHz": 1087,
+   "speed_x": [
+    0.998,
+    0.998,
+    0.998
+   ],
+   "exit": [
+    0,
+    0,
+    0
+   ]
+  }
+ ],
+ "identity": {
+  "note": "raw NV12 sha256 prefixes, RGBA route == match route",
+  "full_24": "85295d54fef4596b",
+  "pillar_24": "c691825dde4f3576",
+  "letter_24": "9c1c599796cfcd91",
+  "hd720_24": "09258ef846be3972",
+  "groot_s01e01_hdr10_120": "f0b89f4f09c2066b",
+  "groot_s02e01_dv8_120": "acc9130bc7bd2940",
+  "native_vs_previous_producer_storage": {
+   "full": "5f0d20d8650d3cae",
+   "pillar": "4666b62007bbfafc",
+   "letter": "48a41db689f0eb75"
+  }
+ },
+ "builds": {
+  "ffmpeg": "8.1.2-etv.5-split.1 sha256 3c3f33a83ce00438 (fixture timings: 868f86adcc976382, same code without scale_vaapi/eac3)",
+  "libplacebo_full": "v7.360.1 + 0001 + 0002, glslang; renderer.c sha256 86b7d85d8f5e1cb6",
+  "libplacebo_base": "v7.360.1 + 0001; renderer.c sha256 16f4674f1822486f",
+  "mesa": "25.2.8-0ubuntu0.24.04.2 (ANV)",
+  "gpu": "Intel i3-1220P (Alder Lake GT2, Gen12)"
+ }
+}

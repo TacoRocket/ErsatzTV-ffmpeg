@@ -1,0 +1,39 @@
+--- a/libavutil/hwcontext_vulkan.c
++++ b/libavutil/hwcontext_vulkan.c
+@@ -2415,6 +2415,18 @@
+     return value && !strcmp(value, "1");
+ }
+ 
++/* ETV_VAAPI_NV12_ASYNC=0 keeps the writable NV12 target but restores the
++ * synchronous reverse wait and the default compute exec pool size. */
++static int nv12_async_enabled(void)
++{
++    const char *value;
++
++    if (!direct_nv12_enabled())
++        return 0;
++    value = getenv("ETV_VAAPI_NV12_ASYNC");
++    return !value || strcmp(value, "0");
++}
++
+ /* Adapt FFmpeg 25e187f84949's timeline-to-sync-file bridge to FFmpeg 8. */
+ static int vulkan_async_reverse(const AVFrame *src)
+ {
+@@ -2523,7 +2535,7 @@
+     VkResult ret = VK_SUCCESS;
+     int nb_sems = 0;
+ 
+-    if (direct_nv12_enabled()) {
++    if (nv12_async_enabled()) {
+         int result = vulkan_async_reverse(src);
+         if (result != 0)
+             return result < 0 ? result : 0;
+@@ -3267,7 +3279,7 @@
+         hwctx->unlock_frame = unlock_frame;
+ 
+     int slots = p->compute_qf->num;
+-    if (direct_nv12_enabled() && slots == 1)
++    if (nv12_async_enabled() && slots == 1)
+         slots = 2;
+     err = ff_vk_exec_pool_init(&p->vkctx, p->compute_qf, &fp->compute_exec,
+                                slots, 0, 0, 0, NULL);

@@ -1,0 +1,28 @@
+--- a/libavfilter/vf_libplacebo.c
++++ b/libavfilter/vf_libplacebo.c
+@@ -271,6 +271,7 @@
+     float scene_low;
+     float scene_high;
+     float percentile;
++    int allow_delayed_peak;
+ 
+     /* pl_color_map_params */
+     int gamut_mode;
+@@ -461,6 +462,9 @@
+ #if PL_API_VER >= 263
+         .percentile = s->percentile,
+ #endif
++#if PL_API_VER >= 254
++        .allow_delayed = s->allow_delayed_peak,
++#endif
+     };
+ 
+     opts->color_map_params = (struct pl_color_map_params) {
+@@ -1768,6 +1772,7 @@
+     { "scene_threshold_low", "Scene change low threshold", OFFSET(scene_low), AV_OPT_TYPE_FLOAT, {.dbl = 1.0}, -1.0, 100.0, DYNAMIC },
+     { "scene_threshold_high", "Scene change high threshold", OFFSET(scene_high), AV_OPT_TYPE_FLOAT, {.dbl = 3.0}, -1.0, 100.0, DYNAMIC },
+     { "percentile", "Peak detection percentile", OFFSET(percentile), AV_OPT_TYPE_FLOAT, {.dbl = 99.995}, 0.0, 100.0, DYNAMIC },
++    { "allow_delayed_peak", "Allow peak detection results to lag by up to one frame", OFFSET(allow_delayed_peak), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, DYNAMIC },
+ 
+     { "gamut_mode", "Gamut-mapping mode", OFFSET(gamut_mode), AV_OPT_TYPE_INT, {.i64 = GAMUT_MAP_PERCEPTUAL}, 0, GAMUT_MAP_COUNT - 1, DYNAMIC, .unit = "gamut_mode" },
+         { "clip", "Hard-clip (RGB per-channel)", 0, AV_OPT_TYPE_CONST, {.i64 = GAMUT_MAP_CLIP}, 0, 0, STATIC, .unit = "gamut_mode" },
