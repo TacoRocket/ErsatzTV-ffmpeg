@@ -17,6 +17,7 @@ RUN case "$DIRECT_NV12_OUTPUT" in 0|1) ;; *) exit 1 ;; esac && \
       cd /tmp/libplacebo-direct && \
       test "$(git rev-parse HEAD)" = cee9b076f2c63104ccfd497fa79c39a867293ec4 && \
       git apply /tmp/libplacebo-patches/0001-opt-in-nv12-producer-storage.patch && \
+      git apply /tmp/libplacebo-patches/0002-nv12-padded-output.patch && \
       PYTHONPATH=/tmp/libplacebo-direct/3rdparty/jinja/src:/tmp/libplacebo-direct/3rdparty/markupsafe/src \
       meson setup build --buildtype=release --prefix=/usr --libdir=/usr/local/lib/x86_64-linux-gnu \
         -Ddefault_library=shared -Ddemos=false -Dtests=false -Dopengl=disabled \

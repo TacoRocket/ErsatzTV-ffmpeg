@@ -1,0 +1,120 @@
+From: TacoRocket
+Subject: [PATCH] renderer: retain NV12 producer storage for padded output
+
+Apply after 0001-opt-in-nv12-producer-storage.patch on libplacebo v7.360.1.
+Preserve the existing color, chroma filters, rounding and output dither
+coordinates when an even-aligned picture rectangle has surrounding bars.
+The public dithering API is unchanged; libplacebo's existing implementation
+is reused through an internal origin-aware helper. Unsupported layouts keep
+the original output path. The inherited Intel ANV rounding limit remains.
+
+Based on libplacebo cee9b076f2c63104ccfd497fa79c39a867293ec4, LGPL-2.1-or-later.
+---
+--- a/src/renderer.c
++++ b/src/renderer.c
+@@ -2658,6 +2658,8 @@
+     const struct pl_plane *uv = &target->planes[1];
+     pl_fmt original = img->fmt ? img->fmt : pass->fbofmt[img->comps];
+     pl_fmt scratch = pass->fbofmt[2];
++    const pl_rect2d rect = pass->dst_rect;
++    const bool translated = rect.x0 || rect.y0;
+     bool output_hook = false;
+ #if PL_HAVE_VULKAN
+     pl_vulkan vk = pl_vulkan_get(rr->gpu);
+@@ -2675,7 +2677,7 @@
+         target->repr.bits.color_depth != 8 ||
+         params->blend_params || params->error_diffusion || output_hook ||
+         pass->image.num_overlays || target->num_overlays ||
+-        pl_frame_is_cropped(target) || y->flipped || uv->flipped ||
++        y->flipped || uv->flipped ||
+         y->components != 1 || y->component_mapping[0] != 0 ||
+         uv->components != 2 || uv->component_mapping[0] != 1 ||
+         uv->component_mapping[1] != 2 || y->shift_x || y->shift_y ||
+@@ -2685,12 +2687,17 @@
+         uv->texture->params.format->type != PL_FMT_UNORM ||
+         uv->texture->params.format->component_depth[0] != 8 ||
+         uv->texture->params.format->component_depth[1] != 8 ||
+-        img->w != 1920 || img->h != 1080 ||
+-        y->texture->params.w != img->w || y->texture->params.h != img->h ||
+-        uv->texture->params.w * 2 != img->w ||
+-        uv->texture->params.h * 2 != img->h ||
+-        pass->dst_rect.x0 || pass->dst_rect.y0 ||
+-        pass->dst_rect.x1 != img->w || pass->dst_rect.y1 != img->h ||
++        y->texture->params.w != 1920 || y->texture->params.h != 1080 ||
++        uv->texture->params.w * 2 != y->texture->params.w ||
++        uv->texture->params.h * 2 != y->texture->params.h ||
++        rect.x0 < 0 || rect.y0 < 0 || rect.x1 > 1920 || rect.y1 > 1080 ||
++        rect.x1 - rect.x0 != img->w || rect.y1 - rect.y0 != img->h ||
++        ((rect.x0 | rect.y0 | img->w | img->h) & 1) ||
++        target->crop.x0 != rect.x0 || target->crop.y0 != rect.y0 ||
++        target->crop.x1 != rect.x1 || target->crop.y1 != rect.y1 ||
++        params->distort_params ||
++        (translated && params->dither_params &&
++         params->dither_params->method == PL_DITHER_WHITE_NOISE) ||
+         !original || !scratch || original->type != PL_FMT_FLOAT ||
+         original->component_depth[0] != 16 ||
+         original->component_depth[1] != 16 ||
+@@ -2728,14 +2735,17 @@
+         struct pl_dither_params dparams = *params->dither_params;
+         if (!params->disable_dither_gamma_correction)
+             dparams.transfer = target->color.transfer;
+-        pl_shader_dither(sh, 8, &rr->dither_state, &dparams);
++        // The producer uses picture-local coordinates; output dithering uses
++        // the final frame, including any bars outside the picture rectangle.
++        sh_dither_at(sh, 8, &rr->dither_state, &dparams, rect.x0, rect.y0);
+     }
+     // Compute producers can run beyond the target's last row/workgroup.
+     GLSL("ivec2 inline_pos = ivec2(gl_FragCoord.xy);\n"
+          "if (all(greaterThanEqual(inline_pos, ivec2(0))) &&\n"
+-         "    all(lessThan(inline_pos, imageSize("$"))))\n"
+-         "    imageStore("$", inline_pos, vec4(color.r / "$", 0.0, 0.0, 1.0));\n"
+-         "color = vec4(inline_uv, 0.0, 1.0);\n", output, output, SH_FLOAT(scale));
++         "    all(lessThan(inline_pos, ivec2(%d, %d))))\n"
++         "    imageStore("$", inline_pos + ivec2(%d, %d), vec4(color.r / "$", 0.0, 0.0, 1.0));\n"
++         "color = vec4(inline_uv, 0.0, 1.0);\n",
++         img->w, img->h, output, rect.x0, rect.y0, SH_FLOAT(scale));
+     sh_describe(sh, "inline NV12 Y output and UV scratch");
+     if (!rr->inline_nv12_logged) {
+         PL_INFO(rr, "ETV_INLINE_NV12_RTZ: accepted original=%s scratch=%s producer=%s",
+--- a/src/shaders/dithering.c
++++ b/src/shaders/dithering.c
+@@ -109,6 +109,12 @@
+                       pl_shader_obj *dither_state,
+                       const struct pl_dither_params *params)
+ {
++    sh_dither_at(sh, new_depth, dither_state, params, 0, 0);
++}
++
++void sh_dither_at(pl_shader sh, int new_depth, pl_shader_obj *dither_state,
++                  const struct pl_dither_params *params, int offset_x, int offset_y)
++{
+     if (!sh_require(sh, PL_SHADER_SIG_COLOR, 0, 0))
+         return;
+
+@@ -179,7 +185,12 @@
+
+     if (size) {
+         // Transform the screen position to the cyclic range [0,1)
+-        GLSL("vec2 pos = fract(gl_FragCoord.xy * 1.0/"$"); \n", SH_FLOAT(size));
++        if (offset_x || offset_y) {
++            GLSL("vec2 pos = fract((gl_FragCoord.xy + vec2("$", "$")) * 1.0/"$"); \n",
++                 SH_FLOAT(offset_x), SH_FLOAT(offset_y), SH_FLOAT(size));
++        } else {
++            GLSL("vec2 pos = fract(gl_FragCoord.xy * 1.0/"$"); \n", SH_FLOAT(size));
++        }
+
+         if (params->temporal) {
+             int phase = SH_PARAMS(sh).index % 8;
+--- a/src/shaders.h
++++ b/src/shaders.h
+@@ -26,6 +26,10 @@
+ #include "gpu.h"
+
+ #include <libplacebo/shaders.h>
++
++struct pl_dither_params;
++void sh_dither_at(pl_shader sh, int new_depth, pl_shader_obj *dither_state,
++                  const struct pl_dither_params *params, int offset_x, int offset_y);
+
+ // This represents an identifier (e.g. name of function, uniform etc.) for
+ // a shader resource. Not human-readable.
