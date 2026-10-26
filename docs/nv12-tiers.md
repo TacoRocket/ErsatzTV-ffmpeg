@@ -155,6 +155,9 @@ FFmpeg 9.0 (`25e187f84949`) and on master for 9.1 (`1d14f9f8c3e4`).
 - Native assumes the fp16 attachment truncation measured on Intel ANV and is
   gated to 1920x1080. Match makes no rounding assumption and accepts any even
   size with even-aligned bars.
+- Match covers limited-range BT.709 NV12, the range of `scale_vulkan`'s
+  `out_range=limited`. A full-range target falls back to libplacebo's original
+  output (verified byte-identical to it).
 - Unsupported layouts, hooks or capabilities keep the original libplacebo
   output path.
 - The test libplacebo was built without libdovi, so the Dolby Vision episode

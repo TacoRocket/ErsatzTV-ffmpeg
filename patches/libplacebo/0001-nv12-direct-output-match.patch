@@ -18,7 +18,8 @@ second pass:
   keeps its stage, stores Y itself and discards into an unwritten scratch
   attachment; a compute producer's own store is used.
 
-Even-aligned picture rectangles inside bars are supported; dithering keeps
+Limited-range BT.709 targets only. Even-aligned picture rectangles inside
+bars are supported; dithering keeps
 final-frame coordinates through an internal origin-aware helper (the public
 dithering API is unchanged). Unsupported layouts, hooks or capabilities
 restore the deferred RGB encode and keep the original output path.
@@ -75,7 +76,7 @@ LGPL-2.1-or-later.
  
      // Map of acquired frames
      struct {
-@@ -2640,6 +2654,227 @@
+@@ -2640,8 +2654,231 @@
                                                    PL_INTENT_RELATIVE_COLORIMETRIC);
      pl_matrix3x3_apply(&tr, out_color);
      pl_color_delinearize(csp, out_color);
@@ -93,7 +94,7 @@ LGPL-2.1-or-later.
 +    if (env && !strcmp(env, "match"))
 +        return INLINE_NV12_MATCH;
 +    return INLINE_NV12_OFF;
-+}
+ }
 +
 +// Writes the NV12 target directly from the final color pass.
 +// Match reproduces libplacebo format=rgba followed by FFmpeg
@@ -153,9 +154,11 @@ LGPL-2.1-or-later.
 +    {
 +        goto unsupported;
 +    }
-+
-+    // pass_output_target left RGB unencoded for match mode
+ 
++    // pass_output_target left RGB unencoded for match mode; the conversion
++    // below is scale_vulkan's out_range=limited
 +    if (mode != INLINE_NV12_MATCH || !pass->inline_nv12_rgb || scale != 1.0f ||
++        pl_color_levels_guess(&target->repr) != PL_COLOR_LEVELS_LIMITED ||
 +        !uv->texture->params.storable)
 +        goto unsupported;
 +
@@ -300,10 +303,12 @@ LGPL-2.1-or-later.
 +        rr->inline_nv12_fallback_logged = true;
 +    }
 +    return 0;
- }
- 
++}
++
  static bool pass_output_target(struct pass_state *pass)
-@@ -2812,7 +3047,18 @@
+ {
+     const struct pl_render_params *params = pass->params;
+@@ -2812,7 +3049,19 @@
      }
  
      enum pl_lut_type lut_type = guess_frame_lut_type(target, true);
@@ -316,14 +321,15 @@ LGPL-2.1-or-later.
 +    // inline_nv12_output converts it, or restores this encode if it declines.
 +    pass->inline_nv12_rgb = inline_mode == INLINE_NV12_MATCH && !target->lut &&
 +                            !inline_hook && target->num_planes == 2 &&
-+                            repr.sys == PL_COLOR_SYSTEM_BT_709;
++                            repr.sys == PL_COLOR_SYSTEM_BT_709 &&
++                            pl_color_levels_guess(&target->repr) == PL_COLOR_LEVELS_LIMITED;
 +    if (pass->inline_nv12_rgb) {
 +        pass->inline_nv12_repr = repr;
 +    } else if (lut_type != PL_LUT_CONVERSION) {
          pl_shader_encode_color(sh, &repr);
          if (repr.sys == PL_COLOR_SYSTEM_XYZ) {
              img->color.transfer = PL_COLOR_TRC_ST428;
-@@ -2861,7 +3107,15 @@
+@@ -2861,7 +3110,15 @@
          clear_target(rr, target, border_tex, scale, params);
      }
  
