@@ -29,9 +29,12 @@ on Intel ANV. Vulkan does not guarantee this behavior on every driver. The RTZ
 name makes that assumption explicit; there is no runtime calibration or device
 database. Do not enable it on another driver expecting bit parity. The current
 eligibility gate covers 1920x1080 8-bit BT.709 SDR NV12 output, either full-frame
-or an even-aligned picture rectangle surrounded by bars. Output hooks, overlays,
+or an even-aligned picture rectangle surrounded by bars, after libplacebo's
+normalization and coordinate rounding. Output hooks, overlays,
 rotation, blending, distortion and error diffusion retain the original path,
-as do fractional/odd-aligned rectangles and translated white-noise dithering.
+as do rectangles whose rounded coordinates are odd-aligned and translated
+white-noise dithering. Originally fractional requests can qualify if their
+normalized, rounded rectangle is even-aligned.
 It checks enabled fragment image-store support and RG16F storage capability.
 Other output sizes use the original path. Broader portability remains open.
 
