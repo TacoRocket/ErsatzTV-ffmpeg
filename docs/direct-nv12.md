@@ -1,5 +1,19 @@
 # Direct NV12 output trial
 
+> **Branch `perf/nv12-match-base`: libplacebo patches reorganized.** The
+> pinned libplacebo build now applies two patches, selected at runtime with
+> `ETV_INLINE_NV12`:
+>
+> - `0001-nv12-direct-output-match.patch` (`ETV_INLINE_NV12=match`): direct
+>   NV12 output byte-identical to `format=rgba` + `scale_vulkan`, one pass.
+> - `0002-nv12-direct-output-native.patch` (`ETV_INLINE_NV12=native`):
+>   libplacebo's own NV12 output (Mitchell chroma) with producer storage, the
+>   former 0001/0002 behavior, including its Intel ANV rounding assumption.
+>
+> `ETV_INLINE_NV12_RTZ` and `ETV_INLINE_NV12_CHROMA` and the point mode are
+> gone on this branch. The sections below record how the work got here and
+> still name the earlier patch files and variables.
+
 This fork carries an opt-in Linux VAAPI/Vulkan path for rendering into an
 NV12 VAAPI surface. It preserves the existing synchronous route unless
 `ETV_VAAPI_DIRECT_NV12=1` is set. The patch supplies writable attachment usage,
