@@ -1,0 +1,70 @@
+{
+  "summary": {
+    "rgba_async": {
+      "seconds": [
+        26.171,
+        26.01
+      ],
+      "mean_seconds": 26.0905,
+      "speed_x": 1.1498438128820836,
+      "fps_each": 27.596251509170006,
+      "fps_total": 137.98125754585004
+    },
+    "storage": {
+      "seconds": [
+        26.957,
+        27.061
+      ],
+      "mean_seconds": 27.009,
+      "speed_x": 1.1107408641563923,
+      "fps_each": 26.657780739753417,
+      "fps_total": 133.2889036987671
+    },
+    "probe": {
+      "seconds": [
+        26.016,
+        26.003
+      ],
+      "mean_seconds": 26.0095,
+      "speed_x": 1.1534247102020416,
+      "fps_each": 27.682193044848997,
+      "fps_total": 138.410965224245
+    }
+  },
+  "picture": {
+    "size": 74649600,
+    "candidate_size": 74649600,
+    "sha256": [
+      "5f0d20d8650d3cae7a1341a8f458dd2a52a956ad22628bbd8a456dcc49f4d00e",
+      "99b4910e92b3ad1821952953e98bf94a97a920985b32a2d8189c20bd09db2231"
+    ],
+    "frames": 24,
+    "planes": {
+      "Y": {
+        "different": 0,
+        "max_delta": 0,
+        "sum_abs": 0
+      },
+      "UV": {
+        "different": 118104,
+        "max_delta": 1,
+        "sum_abs": 118104
+      }
+    }
+  },
+  "raw_explicit_matches_first": true,
+  "contention_samples": 151,
+  "contention_detected": false,
+  "identity": {
+    "source": {
+      "src/renderer.c": "f3719a971679cb127a7f9090749b1dfedc7ba9eca618dafe41e3f5443c15e2b0",
+      "src/shaders.h": "4bd8e1bb5806aea5a7319a7c78d6452226f78d05043524e857ba92f85de3ce1e",
+      "src/shaders/sampling.c": "d8c0bbbdefc194e2959eca5cbceeb33873f2faf03bfe5e8f4f5ecbae98d791a6"
+    },
+    "library_sha256": "73cf40a2ec1d0ee641f0806d12cc3f796e8ad3c01d1e54417d82eb223bf1bb00",
+    "first_library_sha256": "860d0556885d074e3f331ff5653ebba95f214550d212a8793055b3109535eb9b"
+  },
+  "encoded_outputs": 30,
+  "decoded_unique_groups": 3,
+  "frames_per_output": 720
+}

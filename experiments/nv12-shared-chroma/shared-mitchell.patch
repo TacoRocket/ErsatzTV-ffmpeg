@@ -1,0 +1,159 @@
+Experimental shared-memory separable Mitchell convolution.
+Reuses libplacebo's existing filter generation, LUT and sampler infrastructure.
+Original libplacebo authors and LGPL-2.1-or-later licensing remain applicable.
+Apply manually after the fork's libplacebo patches; not applied by Dockerfile.
+
+--- a/src/renderer.c
++++ b/src/renderer.c
+@@ -741,8 +741,14 @@
+         fparams.no_compute = !target_tex->params.storable;
+     } else {
+         fparams.no_compute = !(pass->fbofmt[4]->caps & PL_FMT_CAP_STORABLE);
+     }
++
++    const char *shared_probe = getenv("ETV_NV12_SHARED_CHROMA_PROBE");
++    if (usage == SAMPLER_PLANE && target_tex && shared_probe &&
++        !strcmp(shared_probe, "1") &&
++        sh_sample_nv12_shared_probe(sh, src, &fparams))
++        return;
+
+     bool ok;
+     if (info.config->polar) {
+         // Polar samplers are always a single function call
+--- a/src/shaders.h
++++ b/src/shaders.h
+@@ -25,8 +25,13 @@
+ #include "log.h"
+ #include "gpu.h"
+
+ #include <libplacebo/shaders.h>
++
++struct pl_sample_src;
++struct pl_sample_filter_params;
++bool sh_sample_nv12_shared_probe(pl_shader sh, const struct pl_sample_src *src,
++                                const struct pl_sample_filter_params *params);
+
+ struct pl_dither_params;
+ void sh_dither_at(pl_shader sh, int new_depth, pl_shader_obj *dither_state,
+                   const struct pl_dither_params *params, int offset_x, int offset_y);
+--- a/src/shaders/sampling.c
++++ b/src/shaders/sampling.c
+@@ -1101,8 +1101,118 @@
+     }
+
+     return true;
+ }
++
++/* Isolated probe: reuse libplacebo's Mitchell LUT and shared-memory sampler
++ * conventions for the observed full-frame, left-sited 2:1 NV12 output. */
++bool sh_sample_nv12_shared_probe(pl_shader sh, const struct pl_sample_src *src,
++                                const struct pl_sample_filter_params *params)
++{
++    if (!src->tex || src->tex->params.w != 1920 || src->tex->params.h != 1080 ||
++        src->tex->params.format->type != PL_FMT_FLOAT ||
++        src->tex->params.format->component_depth[0] != 16 ||
++        src->tex->params.format->num_components != 2 || src->components != 2 ||
++        src->new_w != 961 || src->new_h != 540 ||
++        src->rect.x0 != -0.5f || src->rect.x1 != 1921.5f ||
++        src->rect.y0 != 0 || src->rect.y1 != 1080 ||
++        params->no_compute || params->no_widening ||
++        !pl_filter_config_eq(&params->filter, &pl_filter_mitchell))
++        return false;
++
++    enum { BW = 16, BH = 8, SW = 42 };
++    if (!sh_try_compute(sh, BW, BH, false, SW * BH * 2 * sizeof(float)))
++        return false;
++
++    uint8_t comps;
++    float rx, ry, scale;
++    ident_t tex, pos, pt;
++    if (!setup_src(sh, src, &tex, &pos, &pt, &rx, &ry, &comps, &scale, false, LINEAR))
++        return true;
++
++    struct sh_sampler_obj *obj = SH_OBJ(sh, params->lut, PL_SHADER_OBJ_SAMPLER,
++                                      struct sh_sampler_obj, sh_sampler_uninit);
++    if (!obj) {
++        SH_FAIL(sh, "Shared chroma probe sampler allocation failed");
++        return true;
++    }
++    struct pl_filter_config cfg = params->filter;
++    cfg.antiring = PL_DEF(cfg.antiring, params->antiring);
++    cfg.blur = PL_DEF(cfg.blur, 1.0f) * 2.0f;
++    bool update = !obj->filter || !pl_filter_config_eq(&obj->filter->params.config, &cfg);
++    if (update) {
++        pl_filter_free(&obj->filter);
++        obj->filter = pl_filter_generate(sh->log, pl_filter_params(
++            .config = cfg, .lut_entries = SCALER_LUT_SIZE,
++            .max_row_size = SH_GPU(sh)->limits.max_tex_2d_dim / 4,
++            .row_stride_align = 4));
++    }
++    if (!obj->filter || obj->filter->row_size != 8) {
++        SH_FAIL(sh, "Shared chroma probe requires the existing eight-tap filter");
++        return true;
++    }
++    int width = obj->filter->row_stride / 4;
++    ident_t lut = sh_lut(sh, sh_lut_params(
++        .object = &obj->lut, .var_type = PL_VAR_FLOAT, .method = SH_LUT_LINEAR,
++        .width = width, .height = SCALER_LUT_SIZE, .comps = 4,
++        .update = update, .fill = fill_ortho_lut, .priv = obj));
++    if (!lut) {
++        SH_FAIL(sh, "Shared chroma probe LUT allocation failed");
++        return true;
++    }
++
++    ident_t tile = sh_fresh(sh, "chroma_tile");
++    GLSLH("shared vec2 "$"[%d];\n", tile, SW * BH);
++    sh_describe(sh, "shared-memory vertical/horizontal Mitchell NV12 probe");
++    GLSL("vec4 color = vec4(0.0, 0.0, 0.0, 1.0);\n"
++         "{\n"
++         "vec2 sample_pos = "$", sample_pt = "$";\n"
++         "int lx = int(gl_LocalInvocationID.x);\n"
++         "int ly = int(gl_LocalInvocationID.y);\n"
++         "int tile_x = int(gl_WorkGroupID.x) * %d - 4;\n"
++         "float fy = fract(sample_pos.y * 1080.0 - 0.5);\n"
++         "float by = sample_pos.y - fy * sample_pt.y - sample_pt.y * 3.0;\n"
++         "vec4 wy0 = "$"(vec2(0.0, fy));\n"
++         "vec4 wy1 = "$"(vec2(1.0, fy));\n"
++         "for (int col = lx; col < %d; col += %d) {\n"
++         "    float tx = (float(clamp(tile_x + col, 0, 1919)) + 0.5) * sample_pt.x;\n"
++         "    vec2 sum = vec2(0.0);\n"
++         "    for (uint n = 0u; n < 8u; n++) {\n"
++         "        vec4 ws = n < 4u ? wy0 : wy1;\n"
++         "        vec2 c = textureLod("$", vec2(tx, by + sample_pt.y * float(n)), 0.0).rg;\n"
++         "        sum += ws[n %% 4u] * c;\n"
++         "    }\n"
++         // Match the existing Intel half-float intermediate before the next axis.
++         "    uint packed = packHalf2x16(sum);\n"
++         "    uvec2 half_bits = uvec2(packed & 65535u, packed >> 16u);\n"
++         "    uvec2 exponents = (half_bits >> 10u) & 31u;\n"
++         "    uvec2 fractions = half_bits & 1023u;\n"
++         "    uvec2 float_bits = ((exponents + 112u) << 23u) | (fractions << 13u);\n"
++         "    vec2 rounded_abs = uintBitsToFloat(float_bits);\n"
++         "    if (exponents.x == 0u) rounded_abs.x = float(fractions.x) * (1.0 / 16777216.0);\n"
++         "    if (exponents.y == 0u) rounded_abs.y = float(fractions.y) * (1.0 / 16777216.0);\n"
++         "    if (rounded_abs.x > abs(sum.x)) half_bits.x -= 1u;\n"
++         "    if (rounded_abs.y > abs(sum.y)) half_bits.y -= 1u;\n"
++         "    "$"[ly * %d + col] = unpackHalf2x16(half_bits.x | (half_bits.y << 16u));\n"
++         "}\n"
++         "barrier();\n"
++         "float fx = fract(sample_pos.x * 1920.0 - 0.5);\n"
++         "float bx = sample_pos.x - fx * sample_pt.x - sample_pt.x * 3.0;\n"
++         "vec4 wx0 = "$"(vec2(0.0, fx));\n"
++         "vec4 wx1 = "$"(vec2(1.0, fx));\n"
++         "vec2 sum = vec2(0.0);\n"
++         "for (uint n = 0u; n < 8u; n++) {\n"
++         "    vec4 ws = n < 4u ? wx0 : wx1;\n"
++         "    int col = int(round((bx + sample_pt.x * float(n)) * 1920.0 - 0.5)) - tile_x;\n"
++         "    sum += ws[n %% 4u] * "$"[ly * %d + clamp(col, 0, %d)];\n"
++         "}\n"
++         "color.rg = sum;\n"
++         "}\n",
++         pos, pt, 2 * BW, lut, lut, SW, BW, tex, tile, SW,
++         lut, lut, tile, SW, SW - 1);
++    return true;
++}
++
+
+ const struct pl_distort_params pl_distort_default_params = { PL_DISTORT_DEFAULTS };
+
+ void pl_shader_distort(pl_shader sh, pl_tex src_tex, int out_w, int out_h,
