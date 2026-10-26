@@ -12,7 +12,8 @@ They are not credited as new upstream work or independent speed wins.
 
 The amd64 Docker build accepts `DIRECT_NV12_OUTPUT=1`. This builds the pinned
 libplacebo v7.360.1 commit with `patches/libplacebo/0001-opt-in-nv12-producer-storage.patch`,
-followed by `0002-nv12-padded-output.patch`.
+followed by `0002-nv12-padded-output.patch`,
+`0003-nv12-single-pass-point-chroma.patch` and `0004-nv12-single-pass-match-rgba-route.patch`.
 The ordinary dependency image and other build targets are unchanged. Use the
 normal pinned dependency image and release build arguments, plus
 `--build-arg DIRECT_NV12_OUTPUT=1 --build-arg BUILD_JOBS=3`.
@@ -93,7 +94,7 @@ optional build. The inherited half-float rounding limitation and the separate
 software-Vulkan rounding investigation remain; this patch does not claim to fix
 them. Disabling `ETV_INLINE_NV12_RTZ` retains the original output path.
 
-## Single-pass NV12 checkpoint (point chroma, in progress)
+## Single-pass NV12 checkpoint (point chroma)
 
 The third libplacebo patch adds a speed mode. With `ETV_INLINE_NV12_RTZ=1` and
 `ETV_INLINE_NV12_CHROMA=point`, the producer pass renders Y straight into the
@@ -117,13 +118,87 @@ Bars are exactly Y=16, UV=128 and picture edges line up with the RGBA route.
 Single-pass is not byte-identical to RGBA: the RGBA route quantizes RGB to 8 bits
 before converting, single-pass converts at full precision and dithers once.
 
-Timing, same five-worker x 720-frame harness, slowest FFmpeg runtime. Full frame
-so far: RGBA 27.168 s (one batch), Mitchell direct 28.147 s (one batch),
-single-pass 23.945 s and 24.262 s (two batches), about 12.7% more throughput than
-RGBA. The second-round RGBA/Mitchell batches and the padded layouts are pending;
-they yield to other GPU work and will be added here.
+Timing for point is in the match section's table below.
 
 Limits: point chroma matches the current RGBA route's chroma, not Mitchell; it is
 the speed mode, and Mitchell remains the quality mode. One Intel i3-1220P/ANV,
 synthetic fixtures, libplacebo built with glslang (the optional Docker build uses
 shaderc and was not rebuilt for this checkpoint).
+
+## Match mode: one pass, byte-identical to the RGBA route
+
+Plainly: the current ErsatzTV chain has libplacebo write an RGBA picture, then a
+second GPU pass (`scale_vulkan=format=nv12:out_range=limited`) reads that picture
+back and converts it to NV12. Match mode performs the same conversion inside
+libplacebo's own pass, with the same arithmetic and the same GPU read and store
+paths, so the NV12 bytes are the same and the RGBA image plus second pass go away.
+
+Enable it with the direct NV12 setup above (`ETV_VAAPI_DIRECT_NV12=1`,
+`libplacebo=...:format=nv12:range=tv`) plus `ETV_INLINE_NV12_RTZ=1` and
+`ETV_INLINE_NV12_CHROMA=match`. Patch `0004-nv12-single-pass-match-rgba-route.patch`
+applies after 0001-0003.
+
+What the pass does, in order:
+
+1. Leaves RGB unencoded and dithers it to 8 bits exactly as the RGBA output is
+   dithered, so each pixel holds the texel value the RGBA route writes.
+2. Reads those values back through a 256-entry UNORM8 ramp texture with a linear
+   sampler, the conversion `scale_vulkan`'s `texture()` read applies.
+3. Applies `scale_vulkan`'s BT.709 matrix (`ff_fill_rgb2yuv_table`, as a dynamic
+   mat4), limited-range scale and offset, and top-left UV placement, unchanged.
+4. Stores Y and UV with `imageStore`, the store `scale_vulkan` uses. A fragment
+   producer keeps its stage, stores Y itself and discards into an unwritten
+   scratch attachment; a compute producer's own store is used.
+
+Picture proof, 24 raw NV12 frames per layout, same binary and fixtures, compared
+with `cmp` against the RGBA route (`hwdownload,format=nv12` after each chain):
+
+| Layout | Differing bytes | NV12 sha256 (both routes) |
+| --- | ---: | --- |
+| 1920x1080 | 0 | `85295d54fef4596b...` |
+| 1440x1080 at x=240 | 0 | `c691825dde4f3576...` |
+| 1920x800 at y=140 | 0 | `9c1c599796cfcd91...` |
+
+Why each step is there (measured, not assumed):
+
+- An offline model of `scale_vulkan` from libplacebo's captured RGBA output
+  confirmed BT.709 coefficients and top-left chroma. Exact float math still
+  missed about 0.1% of Y bytes by one code value: Intel's UNORM8 read and store
+  conversions are not exactly k/255. Steps 2 and 4 use those hardware paths
+  instead of emulating them.
+- Forcing the producer to compute left 72-432 differing bytes per 24 frames
+  (one code value, fixed pixels): the RGB itself differed before the dither, so
+  the compiled upstream math changed with the stage. Keeping the stage removed it.
+
+Timing, same five-worker x 720-frame harness (Hable, 1080p24 limited BT.709, H.264
+VAAPI 5 Mbps, AAC, HLS), slowest FFmpeg runtime, mean of two batches in reversed
+order. All four routes used the same FFmpeg and the same libplacebo build
+(0001-0004); only the route flags differed:
+
+| Layout | RGBA + `scale_vulkan` | Native (Mitchell) | point | match | match vs RGBA |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1920x1080 | 26.397 s | 27.226 s | 23.155 s | 23.594 s | +11.9% |
+| 1440x1080, x=240 | 22.985 s | 22.905 s | 19.047 s | 19.331 s | +18.9% |
+| 1920x800, y=140 | 22.791 s | 21.276 s | 18.236 s | 18.797 s | +21.2% |
+
+The RGBA route varied 5-8% between batches; every match batch was faster than
+every RGBA batch. Exact rounding costs match about 2% against point. With
+`ETV_VAAPI_DIRECT_NV12=1` on the RGBA route as well (async handoff and two
+slots, no NV12 target), RGBA changed by -3.5% (full) and +0.9% (letterbox), so
+the single pass, not the handoff, carries the gain.
+
+Which mode to use:
+
+| Mode | Picture | Work after tone mapping | Role |
+| --- | --- | --- | --- |
+| `match` (0004) | Same bytes as RGBA + `scale_vulkan` on this Intel GPU | none | Drop-in replacement for the current route |
+| `point` (0003) | Rounds once instead of twice; within 1-2 Y and 2-5 UV codes of RGBA | none | Alternative fast mode |
+| Native (0001/0002) | libplacebo's own output, Mitchell chroma filter | scratch image + 2 passes | Original libplacebo picture, for purists |
+
+Limits: byte identity is shown on one Intel i3-1220P with ANV. On another driver
+the math is the same but the read/store conversions or compiled upstream math
+may differ; treat it as point-like there until checked. Eligibility is the 0001
+gate (1920x1080 8-bit BT.709 SDR, full frame or even-aligned bars); otherwise the
+deferred RGB encode is restored and the original output path runs. libplacebo
+was built with glslang and FFmpeg's `scale_vulkan` came from the image's shaderc
+build; the optional Docker build (shaderc for both) was not rebuilt here.

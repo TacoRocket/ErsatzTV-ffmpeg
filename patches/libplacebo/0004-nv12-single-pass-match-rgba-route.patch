@@ -1,0 +1,244 @@
+From: TacoRocket
+Subject: [PATCH] renderer: single-pass NV12 output matching RGBA + scale_vulkan
+
+Apply after 0001-opt-in-nv12-producer-storage.patch,
+0002-nv12-padded-output.patch and 0003-nv12-single-pass-point-chroma.patch
+on libplacebo v7.360.1.
+
+With ETV_INLINE_NV12_RTZ=1 and ETV_INLINE_NV12_CHROMA=match, the single
+pass reproduces the libplacebo format=rgba + scale_vulkan=format=nv12:
+out_range=limited route instead of converting with libplacebo's own matrix:
+
+- RGB is left unencoded and dithered to 8 bits exactly as the RGBA output
+  is dithered, so each pixel holds the texel value the RGBA route writes.
+- Those values are read back through a 256-entry UNORM8 ramp texture with a
+  linear sampler, the conversion scale_vulkan's texture() read applies.
+- scale_vulkan's BT.709 matrix (ff_fill_rgb2yuv_table, as a dynamic mat4),
+  limited-range scale/offset and top-left UV store follow, unchanged.
+- Y and UV are stored with imageStore, the store scale_vulkan uses. A
+  fragment producer keeps its stage, stores Y itself and discards into an
+  unwritten scratch attachment; a compute producer's own store is used.
+
+On Intel ANV (i3-1220P) the output is byte-identical to the RGBA route
+over 24 frames of full-frame, pillarbox and letterbox HDR->SDR fixtures.
+Forcing the producer to compute left 72-432 differing bytes (one code
+value) per 24 frames: the compiled tone-mapping math differed before the
+dither, so the stage is not changed. The ramp read and store paths are the
+Intel observation; other drivers have not been checked.
+
+If the layout is unsupported, the deferred RGB encode is restored and the
+original output path runs. Point and Mitchell modes are unchanged.
+
+Based on libplacebo cee9b076f2c63104ccfd497fa79c39a867293ec4, LGPL-2.1-or-later.
+---
+--- a/src/renderer.c
++++ b/src/renderer.c
+@@ -87,6 +87,9 @@
+     PL_ARRAY(struct cached_frame) frames;
+     PL_ARRAY(pl_tex) frame_fbos;
+ 
++    // UNORM8 ramp, sampled to reproduce scale_vulkan's input conversion
++    pl_tex inline_nv12_match_lut;
++
+     // For debugging / logging purposes
+     int prev_dither;
+     bool inline_nv12_logged;
+@@ -159,6 +162,8 @@
+     for (int i = 0; i < rr->frame_fbos.num; i++)
+         pl_tex_destroy(rr->gpu, &rr->frame_fbos.elem[i]);
+ 
++    pl_tex_destroy(rr->gpu, &rr->inline_nv12_match_lut);
++
+     // Free all shader resource objects
+     pl_shader_obj_destroy(&rr->tone_map_state);
+     pl_shader_obj_destroy(&rr->dither_state);
+@@ -378,6 +383,10 @@
+     bool *fbos_used;
+     bool need_peak_fbo; // need indirection for peak detection
+ 
++    // RGB left unencoded for inline_nv12_output's match mode
++    bool inline_nv12_rgb;
++    struct pl_color_repr inline_nv12_repr;
++
+     // Map of acquired frames
+     struct {
+         bool target, image, prev, next;
+@@ -2662,7 +2671,9 @@
+     const bool translated = rect.x0 || rect.y0;
+     bool output_hook = false;
+     const char *chroma_env = getenv("ETV_INLINE_NV12_CHROMA");
+-    const bool point_chroma = chroma_env && !strcmp(chroma_env, "point");
++    const bool match_chroma = pass->inline_nv12_rgb;
++    const bool point_chroma = match_chroma ||
++                              (chroma_env && !strcmp(chroma_env, "point"));
+ #if PL_HAVE_VULKAN
+     pl_vulkan vk = pl_vulkan_get(rr->gpu);
+     if (!vk || !vk->features || !vk->features->features.fragmentStoresAndAtomics)
+@@ -2686,6 +2697,7 @@
+         !y->texture->params.storable ||
+         (point_chroma && (!uv->texture->params.storable ||
+                           !y->texture->params.renderable)) ||
++        (match_chroma && scale != 1.0f) ||
+         y->texture->params.format->type != PL_FMT_UNORM ||
+         y->texture->params.format->component_depth[0] != 8 ||
+         uv->texture->params.format->type != PL_FMT_UNORM ||
+@@ -2720,6 +2732,24 @@
+         // scale_vulkan=format=nv12 uses), so no scratch image or separate
+         // plane passes remain.
+         pl_shader sh = img_sh(pass, img);
++        if (match_chroma) {
++            if (!rr->inline_nv12_match_lut) {
++                pl_fmt fmt = pl_find_fmt(rr->gpu, PL_FMT_UNORM, 4, 8, 8,
++                                         PL_FMT_CAP_SAMPLEABLE | PL_FMT_CAP_LINEAR);
++                uint8_t ramp[256][4];
++                for (int i = 0; i < 256; i++) {
++                    ramp[i][0] = ramp[i][1] = ramp[i][2] = i;
++                    ramp[i][3] = 255;
++                }
++                if (fmt) {
++                    rr->inline_nv12_match_lut = pl_tex_create(rr->gpu, pl_tex_params(
++                        .w = 256, .h = 1, .format = fmt, .sampleable = true,
++                        .initial_data = ramp, .debug_tag = PL_DEBUG_TAG));
++                }
++            }
++            if (!rr->inline_nv12_match_lut)
++                goto unsupported;
++        }
+         const bool comp = pl_shader_is_compute(sh);
+         // Compute producers see rectangle-local coordinates; fragment
+         // producers drawing into the Y plane see final-frame coordinates.
+@@ -2739,6 +2769,64 @@
+             sh_dither_at(sh, 8, &rr->dither_state, &dparams,
+                          rect.x0 - lx, rect.y0 - ly);
+         }
++        ident_t match_y = NULL_IDENT;
++        if (match_chroma) {
++            // ff_fill_rgb2yuv_table() for BT.709, column-major as in
++            // scale_vulkan's push constants; dynamic so it is not folded.
++            const double cr = 0.2126, cg = 0.7152, cb = 0.0722;
++            const double bscale = 0.5 / (cb - 1.0), rscale = 0.5 / (cr - 1.0);
++            const double t[3][3] = {
++                {cr, cg, cb},
++                {bscale * cr, bscale * cg, 0.5},
++                {0.5, rscale * cg, rscale * cb},
++            };
++            float m[4][4] = {{0}};
++            for (int i = 0; i < 3; i++) {
++                for (int j = 0; j < 3; j++)
++                    m[i][j] = t[i][j];
++            }
++            m[3][3] = 1.0f;
++            ident_t mat = sh_var(sh, (struct pl_shader_var) {
++                .var = pl_var_mat4("nv12_match_matrix"),
++                .data = &m[0][0],
++                .dynamic = true,
++            });
++            ident_t lut = sh_desc(sh, (struct pl_shader_desc) {
++                .binding = {
++                    .object = rr->inline_nv12_match_lut,
++                    .sample_mode = PL_TEX_SAMPLE_LINEAR,
++                    .address_mode = PL_TEX_ADDRESS_CLAMP,
++                },
++                .desc = {
++                    .name = "nv12_match_lut",
++                    .type = PL_DESC_SAMPLED_TEX,
++                },
++            });
++            // `color` is dithered RGB on the 8-bit grid: the RGBA route's
++            // texel values. The rest is scale_vulkan's rgb2yuv/write_nv12.
++            // Y must use imageStore, the store scale_vulkan uses; attachment
++            // writes may round differently. Compute dispatch already stores.
++            // The producer keeps its stage: forcing compute changes rounding
++            // upstream of the dither on Intel ANV.
++            match_y = comp ? NULL_IDENT : sh_desc(sh, (struct pl_shader_desc) {
++                .binding.object = y->texture,
++                .desc = {
++                    .name = "nv12_match_y_output",
++                    .type = PL_DESC_STORAGE_IMG,
++                    .access = PL_DESC_ACCESS_WRITEONLY,
++                },
++            });
++            GLSL("vec3 inline_k = clamp(roundEven(color.rgb * 255.0), 0.0, 255.0);\n"
++                 "vec3 inline_t = (inline_k + vec3(0.5)) / 256.0;\n"
++                 "vec4 inline_src = vec4(texture("$", vec2(inline_t.r, 0.5)).r,\n"
++                 "                       texture("$", vec2(inline_t.g, 0.5)).r,\n"
++                 "                       texture("$", vec2(inline_t.b, 0.5)).r, 1.0);\n"
++                 "inline_src *= "$";\n"
++                 "inline_src *= vec4(219.0 / 255.0, 224.0 / 255.0, 224.0 / 255.0, 1.0);\n"
++                 "inline_src += vec4(16.0 / 255.0, 128.0 / 255.0, 128.0 / 255.0, 0.0);\n"
++                 "color = inline_src;\n",
++                 lut, lut, lut, mat);
++        }
+         GLSL("ivec2 inline_local = ivec2(gl_FragCoord.xy) - ivec2(%d, %d);\n"
+              "if (all(greaterThanEqual(inline_local, ivec2(0))) &&\n"
+              "    all(lessThan(inline_local, ivec2(%d, %d)))) {\n"
+@@ -2749,14 +2837,31 @@
+              "color = vec4(color.r / "$", 0.0, 0.0, 1.0);\n",
+              lx, ly, img->w, img->h, rect.x0, rect.y0,
+              uv_out, SH_FLOAT(scale), SH_FLOAT(scale));
+-        sh_describe(sh, "single-pass NV12 Y and point UV output");
++        if (match_y) {
++            GLSL("if (all(greaterThanEqual(inline_local, ivec2(0))) &&\n"
++                 "    all(lessThan(inline_local, ivec2(%d, %d))))\n"
++                 "    imageStore("$", inline_local + ivec2(%d, %d), vec4(color.r, 0.0, 0.0, 0.0));\n"
++                 "discard;\n",
++                 img->w, img->h, match_y, rect.x0, rect.y0);
++        }
++        sh_describe(sh, match_chroma ? "single-pass NV12 matching RGBA + scale_vulkan"
++                                     : "single-pass NV12 Y and point UV output");
+         if (!rr->inline_nv12_logged) {
+-            PL_INFO(rr, "ETV_INLINE_NV12_RTZ: accepted chroma=point producer=%s",
+-                    comp ? "compute" : "fragment");
++            PL_INFO(rr, "ETV_INLINE_NV12_RTZ: accepted chroma=%s producer=%s",
++                    match_chroma ? "match" : "point", comp ? "compute" : "fragment");
+             rr->inline_nv12_logged = true;
+         }
++        // A fragment producer that stores Y itself discards every fragment;
++        // its attachment is an unwritten scratch image, not the Y plane.
++        pl_tex dst = y->texture;
++        if (match_y) {
++            dst = get_fbo(pass, y->texture->params.w, y->texture->params.h,
++                          NULL, 1, PL_DEBUG_TAG);
++            if (!dst)
++                return -1;
++        }
+         if (!pl_dispatch_finish(rr->dp, pl_dispatch_params(
+-                .shader = &img->sh, .target = y->texture, .rect = rect)))
++                .shader = &img->sh, .target = dst, .rect = rect)))
+             return -1;
+         return 2;
+     }
+@@ -2817,6 +2922,10 @@
+     return 1;
+ 
+ unsupported:
++    if (pass->inline_nv12_rgb) {
++        pl_shader_encode_color(img_sh(pass, img), &pass->inline_nv12_repr);
++        pass->inline_nv12_rgb = false;
++    }
+     if (!rr->inline_nv12_fallback_logged) {
+         PL_INFO(rr, "ETV_INLINE_NV12_RTZ: unsupported layout or capability; using original output");
+         rr->inline_nv12_fallback_logged = true;
+@@ -2994,7 +3103,21 @@
+     }
+ 
+     enum pl_lut_type lut_type = guess_frame_lut_type(target, true);
+-    if (lut_type != PL_LUT_CONVERSION) {
++    const char *match_inline = getenv("ETV_INLINE_NV12_RTZ");
++    const char *match_chroma = getenv("ETV_INLINE_NV12_CHROMA");
++    bool match_hook = false;
++    for (int i = 0; i < params->num_hooks; i++)
++        match_hook |= !!(params->hooks[i]->stages & PL_HOOK_OUTPUT);
++    // Match mode needs the RGB that the RGBA route would have written.
++    // inline_nv12_output encodes it, or restores this encode if it declines.
++    pass->inline_nv12_rgb = match_inline && !strcmp(match_inline, "1") &&
++                            match_chroma && !strcmp(match_chroma, "match") &&
++                            !target->lut && !match_hook &&
++                            target->num_planes == 2 &&
++                            repr.sys == PL_COLOR_SYSTEM_BT_709;
++    if (pass->inline_nv12_rgb) {
++        pass->inline_nv12_repr = repr;
++    } else if (lut_type != PL_LUT_CONVERSION) {
+         pl_shader_encode_color(sh, &repr);
+         if (repr.sys == PL_COLOR_SYSTEM_XYZ) {
+             img->color.transfer = PL_COLOR_TRC_ST428;

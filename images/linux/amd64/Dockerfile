@@ -19,6 +19,7 @@ RUN case "$DIRECT_NV12_OUTPUT" in 0|1) ;; *) exit 1 ;; esac && \
       git apply /tmp/libplacebo-patches/0001-opt-in-nv12-producer-storage.patch && \
       git apply /tmp/libplacebo-patches/0002-nv12-padded-output.patch && \
       git apply /tmp/libplacebo-patches/0003-nv12-single-pass-point-chroma.patch && \
+      git apply /tmp/libplacebo-patches/0004-nv12-single-pass-match-rgba-route.patch && \
       PYTHONPATH=/tmp/libplacebo-direct/3rdparty/jinja/src:/tmp/libplacebo-direct/3rdparty/markupsafe/src \
       meson setup build --buildtype=release --prefix=/usr --libdir=/usr/local/lib/x86_64-linux-gnu \
         -Ddefault_library=shared -Ddemos=false -Dtests=false -Dopengl=disabled \
