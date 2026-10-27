@@ -1,0 +1,189 @@
+--- a/libavfilter/vf_tonemap_vaapi.c
++++ b/libavfilter/vf_tonemap_vaapi.c
+@@ -16,6 +16,8 @@
+  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+  */
+ #include <string.h>
++#include <va/va_drmcommon.h>
++#include "libavutil/file.h"
+
+ #include "libavutil/opt.h"
+ #include "libavutil/pixdesc.h"
+@@ -41,6 +43,8 @@
+
+     char *mastering_display;
+     char *content_light;
++    char *probe_lut;
++    VASurfaceID probe_surface;
+
+     VAHdrMetaDataHDR10  in_metadata;
+     VAHdrMetaDataHDR10  out_metadata;
+@@ -48,6 +52,124 @@
+     const AVFrameSideData *src_display;
+     const AVFrameSideData *src_light;
+ } HDRVAAPIContext;
++
++/* Experimental standard-VAAPI 65-point LUT hook, not a release filter.
++ * Surface packing follows Intel libva-utils videoprocess/vpp3dlut.cpp;
++ * see THIRD_PARTY.md in this experiment for attribution and license.
++ */
++static void tonemap_vaapi_probe_uninit(AVFilterContext *avctx)
++{
++    HDRVAAPIContext *ctx = avctx->priv;
++    VAAPIVPPContext *vpp = &ctx->vpp_ctx;
++    if (ctx->probe_surface != VA_INVALID_ID && vpp->hwctx) {
++        vaDestroySurfaces(vpp->hwctx->display, &ctx->probe_surface, 1);
++        ctx->probe_surface = VA_INVALID_ID;
++    }
++    ff_vaapi_vpp_pipeline_uninit(avctx);
++}
++
++static int tonemap_vaapi_build_lut_probe(AVFilterContext *avctx)
++{
++    HDRVAAPIContext *ctx = avctx->priv;
++    VAAPIVPPContext *vpp = &ctx->vpp_ctx;
++    const unsigned width = 65 * 128, height = 65 * 2;
++    const size_t expected = (size_t)width * height * 4;
++    VAProcFilterCap3DLUT caps[8] = {0};
++    VAProcFilterParameterBuffer3DLUT param = {0};
++    unsigned count = FF_ARRAY_ELEMS(caps);
++    uint64_t linear_modifier = 0;
++    VADRMFormatModifierList modifiers = { .num_modifiers = 1, .modifiers = &linear_modifier };
++    VASurfaceAttrib attrs[2] = {
++        { .type = VASurfaceAttribPixelFormat, .flags = VA_SURFACE_ATTRIB_SETTABLE,
++          .value = { .type = VAGenericValueTypeInteger, .value.i = VA_FOURCC_RGBA } },
++        { .type = VASurfaceAttribDRMFormatModifiers, .flags = VA_SURFACE_ATTRIB_SETTABLE,
++          .value = { .type = VAGenericValueTypePointer, .value.p = &modifiers } },
++    };
++    VAImage image = { .image_id = VA_INVALID_ID };
++    VAStatus vas;
++    uint8_t *data = NULL;
++    size_t size = 0;
++    void *mapped = NULL;
++    int err, supported = 0;
++
++    vas = vaQueryVideoProcFilterCaps(vpp->hwctx->display, vpp->va_context,
++                                    VAProcFilter3DLUT, caps, &count);
++    if (vas != VA_STATUS_SUCCESS)
++        goto va_error;
++    for (unsigned i = 0; i < count; i++) {
++        supported |= caps[i].lut_size == 65 && caps[i].lut_stride[0] == 65 &&
++                     caps[i].lut_stride[1] == 65 && caps[i].lut_stride[2] == 128 &&
++                     caps[i].bit_depth == 16 && caps[i].num_channel == 4 &&
++                     (caps[i].channel_mapping & VA_3DLUT_CHANNEL_RGB_RGB);
++    }
++    if (!supported) {
++        av_log(avctx, AV_LOG_ERROR, "Probe requires the advertised 65/65/128 RGB LUT layout\n");
++        return AVERROR(ENOSYS);
++    }
++    err = av_file_map(ctx->probe_lut, &data, &size, 0, avctx);
++    if (err < 0)
++        return err;
++    if (size != expected) {
++        av_log(avctx, AV_LOG_ERROR, "Probe LUT size is %zu; expected %zu bytes\n", size, expected);
++        err = AVERROR(EINVAL);
++        goto end;
++    }
++    vas = vaCreateSurfaces(vpp->hwctx->display, VA_RT_FORMAT_RGB32, width, height,
++                           &ctx->probe_surface, 1, attrs, FF_ARRAY_ELEMS(attrs));
++    if (vas != VA_STATUS_SUCCESS)
++        goto va_error;
++    vas = vaSyncSurface(vpp->hwctx->display, ctx->probe_surface);
++    if (vas != VA_STATUS_SUCCESS)
++        goto va_error;
++    vas = vaDeriveImage(vpp->hwctx->display, ctx->probe_surface, &image);
++    if (vas != VA_STATUS_SUCCESS)
++        goto va_error;
++    if (image.format.fourcc != VA_FOURCC_RGBA || image.pitches[0] != width * 4 ||
++        image.data_size < image.offsets[0] + expected) {
++        av_log(avctx, AV_LOG_ERROR, "Probe LUT requires a contiguous linear RGBA surface\n");
++        err = AVERROR(EINVAL);
++        goto end;
++    }
++    vas = vaMapBuffer(vpp->hwctx->display, image.buf, &mapped);
++    if (vas != VA_STATUS_SUCCESS)
++        goto va_error;
++    memcpy((uint8_t *)mapped + image.offsets[0], data, size);
++    vas = vaUnmapBuffer(vpp->hwctx->display, image.buf);
++    mapped = NULL;
++    if (vas != VA_STATUS_SUCCESS)
++        goto va_error;
++    vas = vaDestroyImage(vpp->hwctx->display, image.image_id);
++    image.image_id = VA_INVALID_ID;
++    if (vas != VA_STATUS_SUCCESS)
++        goto va_error;
++    param.type = VAProcFilter3DLUT;
++    param.lut_surface = ctx->probe_surface;
++    param.lut_size = 65;
++    param.lut_stride[0] = 65;
++    param.lut_stride[1] = 65;
++    param.lut_stride[2] = 128;
++    param.bit_depth = 16;
++    param.num_channel = 4;
++    param.channel_mapping = VA_3DLUT_CHANNEL_RGB_RGB;
++    err = ff_vaapi_vpp_make_param_buffers(avctx, VAProcFilterParameterBufferType,
++                                          &param, sizeof(param), 1);
++    if (err >= 0)
++        av_log(avctx, AV_LOG_VERBOSE, "Probe loaded 65-point hardware LUT once (%zu bytes)\n", size);
++    goto end;
++
++va_error:
++    av_log(avctx, AV_LOG_ERROR, "Probe LUT VAAPI operation failed: %s\n", vaErrorStr(vas));
++    err = AVERROR(EIO);
++end:
++    if (mapped)
++        vaUnmapBuffer(vpp->hwctx->display, image.buf);
++    if (image.image_id != VA_INVALID_ID)
++        vaDestroyImage(vpp->hwctx->display, image.image_id);
++    if (data)
++        av_file_unmap(data, size);
++    return err;
++}
++
+
+ static int tonemap_vaapi_save_metadata(AVFilterContext *avctx, AVFrame *input_frame)
+ {
+@@ -246,6 +368,9 @@
+     VAStatus vas;
+     VAProcFilterParameterBufferHDRToneMapping *hdrtm_param;
+
++    if (ctx->probe_lut)
++        return 0;
++
+     vas = vaMapBuffer(vpp_ctx->hwctx->display, vpp_ctx->filter_buffers[0],
+                       (void**)&hdrtm_param);
+     if (vas != VA_STATUS_SUCCESS) {
+@@ -276,6 +401,9 @@
+     VAProcFilterCapHighDynamicRange hdr_cap[VAProcHighDynamicRangeMetadataTypeCount];
+     int num_query_caps;
+     int i;
++
++    if (ctx->probe_lut)
++        return tonemap_vaapi_build_lut_probe(avctx);
+
+     memset(&hdrtm_param, 0, sizeof(hdrtm_param));
+     memset(&ctx->in_metadata, 0, sizeof(ctx->in_metadata));
+@@ -449,9 +577,14 @@
+     VAAPIVPPContext *vpp_ctx = avctx->priv;
+     HDRVAAPIContext *ctx     = avctx->priv;
+
++    ctx->probe_surface = VA_INVALID_ID;
++    if (ctx->probe_lut && ctx->mastering_display) {
++        av_log(avctx, AV_LOG_ERROR, "Probe LUT only supports HDR-to-SDR\n");
++        return AVERROR(EINVAL);
++    }
+     ff_vaapi_vpp_ctx_init(avctx);
+     vpp_ctx->build_filter_params = tonemap_vaapi_build_filter_params;
+-    vpp_ctx->pipeline_uninit = ff_vaapi_vpp_pipeline_uninit;
++    vpp_ctx->pipeline_uninit = tonemap_vaapi_probe_uninit;
+
+     if (ctx->output_format_string) {
+         vpp_ctx->output_format = av_get_pix_fmt(ctx->output_format_string);
+@@ -519,6 +652,7 @@
+ #define OFFSET(x) offsetof(HDRVAAPIContext, x)
+ #define FLAGS (AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_FILTERING_PARAM)
+ static const AVOption tonemap_vaapi_options[] = {
++    { "probe_lut", "Experimental raw 65-point VAAPI LUT", OFFSET(probe_lut), AV_OPT_TYPE_STRING, .flags = FLAGS },
+     { "format", "Output pixel format set", OFFSET(output_format_string), AV_OPT_TYPE_STRING, .flags = FLAGS, .unit = "format" },
+     { "matrix", "Output color matrix coefficient set",
+       OFFSET(color_matrix_string), AV_OPT_TYPE_STRING,

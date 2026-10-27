@@ -1,0 +1,20 @@
+{
+  "unset_control_sha256": "83d0ec41f2349f8293a8a0bf17d0840fd68e6e0c26c94e77ae00da39c945314f",
+  "unset_probe_sha256": "83d0ec41f2349f8293a8a0bf17d0840fd68e6e0c26c94e77ae00da39c945314f",
+  "unset_byte_identity": true,
+  "decodes": [
+    {
+      "route": "fixed",
+      "exit": 0,
+      "frames": 720
+    },
+    {
+      "route": "lut",
+      "exit": 0,
+      "frames": 720
+    }
+  ],
+  "all_low_power": true,
+  "lut_binary_sha256": "ae0abc01c0f5d9bf717789ad82ccfbcb931f83edb53c915cfbe12ce36a986682",
+  "lut_file_sha256": "fe0ae520b07eefc79f26e22c97720ff441573c3dba85336665206e5fa9cfbbef"
+}

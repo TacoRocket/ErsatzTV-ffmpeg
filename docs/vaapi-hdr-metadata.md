@@ -105,4 +105,5 @@ It is also separate from the earlier default-scaling and CRT/NV12 measurements.
 
 The subsequent [isolated picture investigation](../experiments/vaapi-tonemap-picture/README.md)
 separates OpenCL scene adjustment from the remaining conversion difference.
-It has not validated a matching VAAPI picture or a change for deployment.
+Its optional hardware LUT probe closely matches fixed Hable with lower render
+use. Normal scene-adaptive OpenCL remains unmatched; no change is deployed.
