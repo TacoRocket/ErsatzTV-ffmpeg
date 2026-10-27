@@ -102,3 +102,7 @@ That is a measured shift away from general render work in this scene, not a
 power measurement or proof of additional stream capacity. The two tone-mapping
 algorithms differ in picture, so this is not a same-image speed optimization.
 It is also separate from the earlier default-scaling and CRT/NV12 measurements.
+
+The subsequent [isolated picture investigation](../experiments/vaapi-tonemap-picture/README.md)
+separates OpenCL scene adjustment from the remaining conversion difference.
+It has not validated a matching VAAPI picture or a change for deployment.
