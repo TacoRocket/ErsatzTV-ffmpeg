@@ -43,6 +43,14 @@ RUN : "${FFMPEG_VERSION:?build arg required}" "${FFMPEG_SHA256:?build arg requir
     git -C /tmp/ffmpeg apply --verbose "$p" || exit 1; \
     done
 
+# Self-contained optional fixed-Hable VAAPI filter and build-time LUT asset.
+ARG VAAPI_HABLE_LUT=0
+COPY features/vaapi-hable-lut/ /tmp/vaapi-hable-lut/
+RUN case "$VAAPI_HABLE_LUT" in 0|1) ;; *) exit 1 ;; esac && \
+    if [ "$VAAPI_HABLE_LUT" = 1 ]; then \
+      sh /tmp/vaapi-hable-lut/install.sh /tmp/ffmpeg /buildout/usr/local/share/ffmpeg; \
+    fi
+
 ARG FFMPEG_EXTRA_VERSION
 RUN : "${FFMPEG_EXTRA_VERSION:?build arg required}" && \
     cd /tmp/ffmpeg && \
@@ -96,7 +104,10 @@ RUN : "${FFMPEG_EXTRA_VERSION:?build arg required}" && \
     --extra-version=${FFMPEG_EXTRA_VERSION} \
     --extra-libs=-ldl \
     --extra-libs=-lpthread && \
-    make
+    make -j "$BUILD_JOBS" && \
+    if [ "$VAAPI_HABLE_LUT" = 1 ]; then \
+      ./ffmpeg -hide_banner -filters | grep -q ' tonemap_vaapi_lut '; \
+    fi
 
 RUN ldconfig && \
     mkdir -p \

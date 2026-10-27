@@ -1,0 +1,38 @@
+--- a/configure
++++ b/configure
+@@ -4237,6 +4237,7 @@
+ tinterlace_pad_test_deps="tinterlace_filter"
+ tonemap_filter_deps="const_nan"
+ tonemap_vaapi_filter_deps="vaapi VAProcFilterParameterBufferHDRToneMapping"
++tonemap_vaapi_lut_filter_deps="vaapi VAProcFilterParameterBuffer3DLUT"
+ tonemap_opencl_filter_deps="opencl const_nan"
+ transpose_opencl_filter_deps="opencl"
+ transpose_vaapi_filter_deps="vaapi VAProcPipelineCaps_rotation_flags"
+@@ -7709,6 +7710,7 @@
+     check_struct "va/va.h" "VADecPictureParameterBufferVP9" bit_depth
+     check_struct "va/va.h" "VADecPictureParameterBufferAV1" bit_depth_idx
+     check_type   "va/va.h va/va_vpp.h" "VAProcFilterParameterBufferHDRToneMapping"
++    check_type   "va/va.h va/va_vpp.h" "VAProcFilterParameterBuffer3DLUT"
+     check_struct "va/va.h va/va_vpp.h" "VAProcPipelineCaps" rotation_flags
+     check_struct "va/va.h va/va_vpp.h" "VAProcPipelineCaps" blend_flags
+     check_type "va/va.h va/va_enc_hevc.h" "VAEncPictureParameterBufferHEVC"
+--- a/libavfilter/Makefile
++++ b/libavfilter/Makefile
+@@ -547,6 +547,7 @@
+ OBJS-$(CONFIG_TONEMAP_OPENCL_FILTER)         += vf_tonemap_opencl.o opencl.o \
+                                                 opencl/tonemap.o opencl/colorspace_common.o
+ OBJS-$(CONFIG_TONEMAP_VAAPI_FILTER)          += vf_tonemap_vaapi.o vaapi_vpp.o
++OBJS-$(CONFIG_TONEMAP_VAAPI_LUT_FILTER)      += vf_tonemap_vaapi_lut.o vaapi_vpp.o
+ OBJS-$(CONFIG_TPAD_FILTER)                   += vf_tpad.o
+ OBJS-$(CONFIG_TRANSPOSE_FILTER)              += vf_transpose.o
+ OBJS-$(CONFIG_TRANSPOSE_NPP_FILTER)          += vf_transpose_npp.o
+--- a/libavfilter/allfilters.c
++++ b/libavfilter/allfilters.c
+@@ -513,6 +513,7 @@
+ extern const FFFilter ff_vf_tonemap;
+ extern const FFFilter ff_vf_tonemap_opencl;
+ extern const FFFilter ff_vf_tonemap_vaapi;
++extern const FFFilter ff_vf_tonemap_vaapi_lut;
+ extern const FFFilter ff_vf_tpad;
+ extern const FFFilter ff_vf_transpose;
+ extern const FFFilter ff_vf_transpose_npp;

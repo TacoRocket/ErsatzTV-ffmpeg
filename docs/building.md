@@ -75,3 +75,12 @@ sh scripts/check-native-package.sh native/macos/artifacts/<archive> macosarm64 8
 3. Open a pull request. A change to `deps.json`, `env.sh` or `build-deps.sh` makes a new CI cache key, so CI compiles all the libraries again.
 
 Local builds show `etv.dev.<commit>` in `ffmpeg -version`. Only the release workflow makes `etv.<revision>` builds.
+
+### Optional fixed-Hable VAAPI module (fork only)
+
+Linux amd64 builds may add `--build-arg VAAPI_HABLE_LUT=1`. The default is `0`;
+existing graphs keep their behavior. This bundles a dedicated filter and its LUT
+asset, with no host installation steps. It can be combined with
+`--build-arg DIRECT_NV12_OUTPUT=1`. See the
+[module README](../features/vaapi-hable-lut/README.md) for input limits, selection,
+upgrade checks and rollback. OpenCL remains the application default.
