@@ -106,7 +106,7 @@ RUN : "${FFMPEG_EXTRA_VERSION:?build arg required}" && \
     --extra-libs=-lpthread && \
     make -j "$BUILD_JOBS" && \
     if [ "$VAAPI_HABLE_LUT" = 1 ]; then \
-      ./ffmpeg -hide_banner -filters | grep -q ' tonemap_vaapi_lut '; \
+      grep -q '^#define CONFIG_TONEMAP_VAAPI_LUT_FILTER 1$' config_components.h; \
     fi
 
 RUN ldconfig && \
@@ -228,8 +228,13 @@ RUN apt-get -yqq update && \
 
 ARG FFMPEG_VERSION
 ARG FFMPEG_EXTRA_VERSION
+ARG VAAPI_HABLE_LUT=0
 RUN --mount=type=bind,source=scripts/verify-ffmpeg.sh,target=/tmp/verify-ffmpeg.sh \
-    sh /tmp/verify-ffmpeg.sh /usr/local/bin "${FFMPEG_VERSION}" "${FFMPEG_EXTRA_VERSION}"
+    sh /tmp/verify-ffmpeg.sh /usr/local/bin "${FFMPEG_VERSION}" "${FFMPEG_EXTRA_VERSION}" && \
+    if [ "$VAAPI_HABLE_LUT" = 1 ]; then \
+      ffmpeg -hide_banner -filters | grep -q ' tonemap_vaapi_lut ' && \
+      echo 'fe0ae520b07eefc79f26e22c97720ff441573c3dba85336665206e5fa9cfbbef  /usr/local/share/ffmpeg/luts/hable-1000-65.bin' | sha256sum -c -; \
+    fi
 
 CMD         ["--help"]
 ENTRYPOINT  ["ffmpeg"]
