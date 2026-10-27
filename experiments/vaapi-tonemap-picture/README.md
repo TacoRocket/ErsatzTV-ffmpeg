@@ -91,10 +91,12 @@ Neither the checked FFmpeg source nor Jellyfin's source exposed
 
 The operator then approved the bounded fixed-Hable probe below. Exact
 moving-picture parity with normal OpenCL additionally needs compatible scene
-analysis. The operator explicitly limited this work to a small maintainable
-optional hook; a custom scene-analysis system or driver modification is outside
-this probe. Keep the live OpenCL route while deciding whether fixed-curve
-behavior is useful enough to adopt.
+analysis, which was not part of the fixed-curve probe authorization. The operator
+clarified that maintainability chiefly means routine container deployment and
+upgrades: a self-contained feature with its assets in the normal build, without
+manual host setup or a separate rendering service. This is not a blanket rejection
+of scene adaptation if it can meet that operational boundary. Main keeps OpenCL
+while packaging and the remaining picture difference are discussed.
 
 ## Hardware lookup-table probe
 
@@ -172,10 +174,14 @@ The fixed control and both speed pairs were rerun after playback exited.
 
 ### Disposition and reproduction
 
-Keep this as an optional fork experiment. The thin-hook maintenance goal is met
-for this bounded probe, and the fixed-transform resource benefit is demonstrated.
-It is **not** a deployment-ready replacement for normal scene-adaptive OpenCL.
-No further adaptation or general LUT framework is authorized by this checkpoint.
+Keep this as an optional fork experiment. The fixed-transform resource benefit
+is demonstrated, but the container-upgrade maintenance goal is not yet proven:
+the probe and generated asset have not been integrated into the normal image
+recipe. Any deployable version should include its executable support and assets
+in that recipe and expose an explicit selection, with no extra service or manual
+host preparation. It is **not** a deployment-ready replacement for normal
+scene-adaptive OpenCL. Further adaptation and packaging remain separate work;
+this checkpoint does not authorize a general LUT framework or deployment.
 
 Apply `hardware-lut.patch` directly after fork patches 0001–0026, without
 `peak-control.patch`. Rebuild FFmpeg, run `python3 make_lut.py` with NumPy available,
