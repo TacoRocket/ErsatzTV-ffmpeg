@@ -1,0 +1,81 @@
+From: TacoRocket <tacorocket@users.noreply.github.com>
+Subject: [PATCH] avfilter/tonemap_vaapi: use input-link HDR metadata when absent on frames
+
+An HDR10 input can retain mastering metadata on the filter link while decoded
+frames lack it, including after a seek. Use that metadata only when the frame
+has no corresponding side data. Preserve explicit frame metadata precedence
+and fail as before if neither location provides mastering metadata.
+
+Remove inherited HDR mastering/content-light data from the SDR output link,
+matching the existing per-frame cleanup. HDR-to-HDR output metadata handling
+is unchanged.
+
+Fork-only candidate. No upstream submission or claim of broad validation.
+
+---
+--- a/libavfilter/vf_tonemap_vaapi.c
++++ b/libavfilter/vf_tonemap_vaapi.c
+@@ -45,8 +45,8 @@
+     VAHdrMetaDataHDR10  in_metadata;
+     VAHdrMetaDataHDR10  out_metadata;
+ 
+-    AVFrameSideData    *src_display;
+-    AVFrameSideData    *src_light;
++    const AVFrameSideData *src_display;
++    const AVFrameSideData *src_light;
+ } HDRVAAPIContext;
+ 
+ static int tonemap_vaapi_save_metadata(AVFilterContext *avctx, AVFrame *input_frame)
+@@ -61,6 +61,10 @@
+ 
+     ctx->src_display = av_frame_get_side_data(input_frame,
+                                               AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
++    if (!ctx->src_display)
++        ctx->src_display = av_frame_side_data_get(avctx->inputs[0]->side_data,
++                                                avctx->inputs[0]->nb_side_data,
++                                                AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
+     if (ctx->src_display) {
+         hdr_meta = (AVMasteringDisplayMetadata *)ctx->src_display->data;
+         if (!hdr_meta) {
+@@ -128,6 +132,10 @@
+ 
+     ctx->src_light = av_frame_get_side_data(input_frame,
+                                             AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
++    if (!ctx->src_light)
++        ctx->src_light = av_frame_side_data_get(avctx->inputs[0]->side_data,
++                                                avctx->inputs[0]->nb_side_data,
++                                                AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+     if (ctx->src_light) {
+         light_meta = (AVContentLightMetadata *)ctx->src_light->data;
+         if (!light_meta) {
+@@ -551,11 +559,29 @@
+     },
+ };
+ 
++static int tonemap_vaapi_config_output(AVFilterLink *outlink)
++{
++    HDRVAAPIContext *ctx = outlink->src->priv;
++    int ret = ff_vaapi_vpp_config_output(outlink);
++
++    if (ret < 0)
++        return ret;
++
++    if (!ctx->mastering_display) {
++        av_frame_side_data_remove(&outlink->side_data, &outlink->nb_side_data,
++                                  AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
++        av_frame_side_data_remove(&outlink->side_data, &outlink->nb_side_data,
++                                  AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
++    }
++
++    return 0;
++}
++
+ static const AVFilterPad tonemap_vaapi_outputs[] = {
+     {
+         .name = "default",
+         .type = AVMEDIA_TYPE_VIDEO,
+-        .config_props = &ff_vaapi_vpp_config_output,
++        .config_props = &tonemap_vaapi_config_output,
+     },
+ };
+ 

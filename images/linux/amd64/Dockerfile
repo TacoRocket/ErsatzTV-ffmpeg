@@ -6,6 +6,26 @@ ARG BASE_IMAGE_TAG=noble
 
 FROM ${DEPS_IMAGE} AS devel-base
 
+# Optional Linux/Intel trial. The normal dependency image stays unchanged.
+ARG DIRECT_NV12_OUTPUT=0
+ARG BUILD_JOBS=3
+COPY patches/libplacebo/ /tmp/libplacebo-patches/
+RUN case "$DIRECT_NV12_OUTPUT" in 0|1) ;; *) exit 1 ;; esac && \
+    if [ "$DIRECT_NV12_OUTPUT" = 1 ]; then \
+      git clone --branch v7.360.1 --depth 1 --recursive \
+        https://code.videolan.org/videolan/libplacebo /tmp/libplacebo-direct && \
+      cd /tmp/libplacebo-direct && \
+      test "$(git rev-parse HEAD)" = cee9b076f2c63104ccfd497fa79c39a867293ec4 && \
+      git apply /tmp/libplacebo-patches/0001-nv12-direct-output-match.patch && \
+      git apply /tmp/libplacebo-patches/0002-nv12-direct-output-native.patch && \
+      PYTHONPATH=/tmp/libplacebo-direct/3rdparty/jinja/src:/tmp/libplacebo-direct/3rdparty/markupsafe/src \
+      meson setup build --buildtype=release --prefix=/usr --libdir=/usr/local/lib/x86_64-linux-gnu \
+        -Ddefault_library=shared -Ddemos=false -Dtests=false -Dopengl=disabled \
+        -Dvulkan=enabled -Dshaderc=enabled -Dglslang=disabled && \
+      PYTHONPATH=/tmp/libplacebo-direct/3rdparty/jinja/src:/tmp/libplacebo-direct/3rdparty/markupsafe/src \
+      ninja -C build -j "$BUILD_JOBS" install; \
+    fi
+
 # ffmpeg (version inputs come from release.json via scripts/release-vars.sh)
 ARG FFMPEG_VERSION
 ARG FFMPEG_SHA256
@@ -22,6 +42,14 @@ RUN : "${FFMPEG_VERSION:?build arg required}" "${FFMPEG_SHA256:?build arg requir
     echo "Applying FFmpeg patch: $p"; \
     git -C /tmp/ffmpeg apply --verbose "$p" || exit 1; \
     done
+
+# Self-contained optional fixed-Hable VAAPI filter and build-time LUT asset.
+ARG VAAPI_HABLE_LUT=0
+COPY features/vaapi-hable-lut/ /tmp/vaapi-hable-lut/
+RUN case "$VAAPI_HABLE_LUT" in 0|1) ;; *) exit 1 ;; esac && \
+    if [ "$VAAPI_HABLE_LUT" = 1 ]; then \
+      sh /tmp/vaapi-hable-lut/install.sh /tmp/ffmpeg /buildout/usr/local/share/ffmpeg; \
+    fi
 
 ARG FFMPEG_EXTRA_VERSION
 RUN : "${FFMPEG_EXTRA_VERSION:?build arg required}" && \
@@ -76,7 +104,10 @@ RUN : "${FFMPEG_EXTRA_VERSION:?build arg required}" && \
     --extra-version=${FFMPEG_EXTRA_VERSION} \
     --extra-libs=-ldl \
     --extra-libs=-lpthread && \
-    make
+    make -j "$BUILD_JOBS" && \
+    if [ "$VAAPI_HABLE_LUT" = 1 ]; then \
+      grep -q '^#define CONFIG_TONEMAP_VAAPI_LUT_FILTER 1$' config_components.h; \
+    fi
 
 RUN ldconfig && \
     mkdir -p \
@@ -197,8 +228,13 @@ RUN apt-get -yqq update && \
 
 ARG FFMPEG_VERSION
 ARG FFMPEG_EXTRA_VERSION
+ARG VAAPI_HABLE_LUT=0
 RUN --mount=type=bind,source=scripts/verify-ffmpeg.sh,target=/tmp/verify-ffmpeg.sh \
-    sh /tmp/verify-ffmpeg.sh /usr/local/bin "${FFMPEG_VERSION}" "${FFMPEG_EXTRA_VERSION}"
+    sh /tmp/verify-ffmpeg.sh /usr/local/bin "${FFMPEG_VERSION}" "${FFMPEG_EXTRA_VERSION}" && \
+    if [ "$VAAPI_HABLE_LUT" = 1 ]; then \
+      ffmpeg -hide_banner -filters | grep -q ' tonemap_vaapi_lut ' && \
+      echo 'fe0ae520b07eefc79f26e22c97720ff441573c3dba85336665206e5fa9cfbbef  /usr/local/share/ffmpeg/luts/hable-1000-65.bin' | sha256sum -c -; \
+    fi
 
 CMD         ["--help"]
 ENTRYPOINT  ["ffmpeg"]

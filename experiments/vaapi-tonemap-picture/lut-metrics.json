@@ -1,0 +1,99 @@
+{
+  "units": "8-bit NV12 code values, full frame",
+  "comparison": "fixed OpenCL Hable, no scene adaptation",
+  "frames": [
+    {
+      "seek": 60,
+      "lut_sha256": "bc31d80ab5c9dfb9bf954814ee6a540307d92717dc9ef279d4ba818bd3cca92b",
+      "reference_sha256": "8071a3196c70ce246343be99553e03509bad43039009396cca347db91e6e70c2",
+      "planes": {
+        "Y": {
+          "mean_absolute_error": 0.3252015817901235,
+          "bias": 0.3237827932098765,
+          "p95": 1.0,
+          "p99": 1.0,
+          "max": 2.0,
+          "fraction_over_4": 0.0
+        },
+        "U": {
+          "mean_absolute_error": 0.694579475308642,
+          "bias": 0.694579475308642,
+          "p95": 1.0,
+          "p99": 2.0,
+          "max": 2.0,
+          "fraction_over_4": 0.0
+        },
+        "V": {
+          "mean_absolute_error": 0.8324363425925926,
+          "bias": 0.8324363425925926,
+          "p95": 2.0,
+          "p99": 2.0,
+          "max": 3.0,
+          "fraction_over_4": 0.0
+        }
+      }
+    },
+    {
+      "seek": 120,
+      "lut_sha256": "8f0bb3fff22c3c29a7e6ee3676e8ec713b3b309d6cd5700a2c1225767b7e539e",
+      "reference_sha256": "a4d9669ca0ea3cff412346ea07c040c4470d3cfdf5e92258b7f40e0de8f0f748",
+      "planes": {
+        "Y": {
+          "mean_absolute_error": 0.34736014660493825,
+          "bias": 0.34304591049382716,
+          "p95": 1.0,
+          "p99": 2.0,
+          "max": 8.0,
+          "fraction_over_4": 0.0012119020061728395
+        },
+        "U": {
+          "mean_absolute_error": 0.7534722222222222,
+          "bias": 0.7497145061728395,
+          "p95": 2.0,
+          "p99": 2.0,
+          "max": 3.0,
+          "fraction_over_4": 0.0
+        },
+        "V": {
+          "mean_absolute_error": 0.8953742283950618,
+          "bias": 0.879309413580247,
+          "p95": 2.0,
+          "p99": 4.0,
+          "max": 16.0,
+          "fraction_over_4": 0.007723765432098765
+        }
+      }
+    },
+    {
+      "seek": 180,
+      "lut_sha256": "273a6745e851e06eadca17fb1fb1e7641a0d70fddaf1b90d99406143638c930b",
+      "reference_sha256": "33f1683b1335c2c6b9ac9f18d1b9e41f71cf0bf81a15f6a008ffaafb532ccdcc",
+      "planes": {
+        "Y": {
+          "mean_absolute_error": 0.20667197145061728,
+          "bias": 0.20592447916666667,
+          "p95": 1.0,
+          "p99": 1.0,
+          "max": 3.0,
+          "fraction_over_4": 0.0
+        },
+        "U": {
+          "mean_absolute_error": 0.7455671296296297,
+          "bias": 0.7455632716049383,
+          "p95": 2.0,
+          "p99": 2.0,
+          "max": 2.0,
+          "fraction_over_4": 0.0
+        },
+        "V": {
+          "mean_absolute_error": 0.8224344135802469,
+          "bias": 0.8224189814814815,
+          "p95": 2.0,
+          "p99": 2.0,
+          "max": 3.0,
+          "fraction_over_4": 0.0
+        }
+      }
+    }
+  ]
+}

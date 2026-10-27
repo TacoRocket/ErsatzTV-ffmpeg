@@ -1,0 +1,221 @@
+{
+  "format": "NV12, 1920x1080, limited BT.709",
+  "crop": [
+    0,
+    140,
+    1920,
+    940
+  ],
+  "selection": "frame 48 after each seek, 49 decoded/filter frames; nominal seek + 2 seconds",
+  "units": "8-bit luma code values; not display luminance or perceptual scores",
+  "results": [
+    {
+      "name": "60-opencl",
+      "sha256": "00739f3195011ddab7a5ff3c2a39985e40184af0ef82d4a149fc170d4861ed59",
+      "mean_y": 70.59561588541666,
+      "mean_y_delta_vs_opencl": 0.0,
+      "mean_absolute_y_delta_vs_opencl": 0.0,
+      "differing_bytes_vs_opencl": 0
+    },
+    {
+      "name": "60-original",
+      "sha256": "83d0ec41f2349f8293a8a0bf17d0840fd68e6e0c26c94e77ae00da39c945314f",
+      "mean_y": 37.184276041666664,
+      "mean_y_delta_vs_opencl": -33.41133984375,
+      "mean_absolute_y_delta_vs_opencl": 33.41133984375,
+      "differing_bytes_vs_opencl": 3029125
+    },
+    {
+      "name": "60-peak100",
+      "sha256": "83d0ec41f2349f8293a8a0bf17d0840fd68e6e0c26c94e77ae00da39c945314f",
+      "mean_y": 37.184276041666664,
+      "mean_y_delta_vs_opencl": -33.41133984375,
+      "mean_absolute_y_delta_vs_opencl": 33.41133984375,
+      "differing_bytes_vs_opencl": 3029125
+    },
+    {
+      "name": "60-peak1000",
+      "sha256": "83d0ec41f2349f8293a8a0bf17d0840fd68e6e0c26c94e77ae00da39c945314f",
+      "mean_y": 37.184276041666664,
+      "mean_y_delta_vs_opencl": -33.41133984375,
+      "mean_absolute_y_delta_vs_opencl": 33.41133984375,
+      "differing_bytes_vs_opencl": 3029125
+    },
+    {
+      "name": "60-peak400",
+      "sha256": "83d0ec41f2349f8293a8a0bf17d0840fd68e6e0c26c94e77ae00da39c945314f",
+      "mean_y": 37.184276041666664,
+      "mean_y_delta_vs_opencl": -33.41133984375,
+      "mean_absolute_y_delta_vs_opencl": 33.41133984375,
+      "differing_bytes_vs_opencl": 3029125
+    },
+    {
+      "name": "60-reverse",
+      "sha256": "658ac1d499828446427409807bb5bd246be4484132ed8792924b048238bee450",
+      "mean_y": 37.26543489583333,
+      "mean_y_delta_vs_opencl": -33.33018098958333,
+      "mean_absolute_y_delta_vs_opencl": 33.33018098958333,
+      "differing_bytes_vs_opencl": 3026444
+    },
+    {
+      "name": "60-srgb",
+      "sha256": "83d0ec41f2349f8293a8a0bf17d0840fd68e6e0c26c94e77ae00da39c945314f",
+      "mean_y": 37.184276041666664,
+      "mean_y_delta_vs_opencl": -33.41133984375,
+      "mean_absolute_y_delta_vs_opencl": 33.41133984375,
+      "differing_bytes_vs_opencl": 3029125
+    },
+    {
+      "name": "60-static",
+      "sha256": "8071a3196c70ce246343be99553e03509bad43039009396cca347db91e6e70c2",
+      "mean_y": 53.570602864583336,
+      "mean_y_delta_vs_opencl": -17.025013020833335,
+      "mean_absolute_y_delta_vs_opencl": 17.025013020833335,
+      "differing_bytes_vs_opencl": 2915999
+    },
+    {
+      "name": "60-submitted100",
+      "sha256": "83d0ec41f2349f8293a8a0bf17d0840fd68e6e0c26c94e77ae00da39c945314f",
+      "mean_y": 37.184276041666664,
+      "mean_y_delta_vs_opencl": -33.41133984375,
+      "mean_absolute_y_delta_vs_opencl": 33.41133984375,
+      "differing_bytes_vs_opencl": 3029125
+    },
+    {
+      "name": "60-submitted4000",
+      "sha256": "83d0ec41f2349f8293a8a0bf17d0840fd68e6e0c26c94e77ae00da39c945314f",
+      "mean_y": 37.184276041666664,
+      "mean_y_delta_vs_opencl": -33.41133984375,
+      "mean_absolute_y_delta_vs_opencl": 33.41133984375,
+      "differing_bytes_vs_opencl": 3029125
+    },
+    {
+      "name": "60-target100",
+      "sha256": "83d0ec41f2349f8293a8a0bf17d0840fd68e6e0c26c94e77ae00da39c945314f",
+      "mean_y": 37.184276041666664,
+      "mean_y_delta_vs_opencl": -33.41133984375,
+      "mean_absolute_y_delta_vs_opencl": 33.41133984375,
+      "differing_bytes_vs_opencl": 3029125
+    },
+    {
+      "name": "60-target200",
+      "sha256": "83d0ec41f2349f8293a8a0bf17d0840fd68e6e0c26c94e77ae00da39c945314f",
+      "mean_y": 37.184276041666664,
+      "mean_y_delta_vs_opencl": -33.41133984375,
+      "mean_absolute_y_delta_vs_opencl": 33.41133984375,
+      "differing_bytes_vs_opencl": 3029125
+    },
+    {
+      "name": "60-trace100",
+      "sha256": "83d0ec41f2349f8293a8a0bf17d0840fd68e6e0c26c94e77ae00da39c945314f",
+      "mean_y": 37.184276041666664,
+      "mean_y_delta_vs_opencl": -33.41133984375,
+      "mean_absolute_y_delta_vs_opencl": 33.41133984375,
+      "differing_bytes_vs_opencl": 3029125
+    },
+    {
+      "name": "60-vaapi",
+      "sha256": "83d0ec41f2349f8293a8a0bf17d0840fd68e6e0c26c94e77ae00da39c945314f",
+      "mean_y": 37.184276041666664,
+      "mean_y_delta_vs_opencl": -33.41133984375,
+      "mean_absolute_y_delta_vs_opencl": 33.41133984375,
+      "differing_bytes_vs_opencl": 3029125
+    },
+    {
+      "name": "120-opencl",
+      "sha256": "c2f2b42d64c110caaf33eaaade995c9508c0bf05fa3110c1caa31027c052351c",
+      "mean_y": 67.12147200520833,
+      "mean_y_delta_vs_opencl": 0.0,
+      "mean_absolute_y_delta_vs_opencl": 0.0,
+      "differing_bytes_vs_opencl": 0
+    },
+    {
+      "name": "120-peak100",
+      "sha256": "c8ec0071d0168f9c331ad8edb6390bf4de26fe2750bcc3c7a2ff75df57be62e4",
+      "mean_y": 39.473419921875,
+      "mean_y_delta_vs_opencl": -27.648052083333333,
+      "mean_absolute_y_delta_vs_opencl": 27.648223958333332,
+      "differing_bytes_vs_opencl": 2951036
+    },
+    {
+      "name": "120-peak1000",
+      "sha256": "c8ec0071d0168f9c331ad8edb6390bf4de26fe2750bcc3c7a2ff75df57be62e4",
+      "mean_y": 39.473419921875,
+      "mean_y_delta_vs_opencl": -27.648052083333333,
+      "mean_absolute_y_delta_vs_opencl": 27.648223958333332,
+      "differing_bytes_vs_opencl": 2951036
+    },
+    {
+      "name": "120-peak400",
+      "sha256": "c8ec0071d0168f9c331ad8edb6390bf4de26fe2750bcc3c7a2ff75df57be62e4",
+      "mean_y": 39.473419921875,
+      "mean_y_delta_vs_opencl": -27.648052083333333,
+      "mean_absolute_y_delta_vs_opencl": 27.648223958333332,
+      "differing_bytes_vs_opencl": 2951036
+    },
+    {
+      "name": "120-static",
+      "sha256": "a4d9669ca0ea3cff412346ea07c040c4470d3cfdf5e92258b7f40e0de8f0f748",
+      "mean_y": 55.45906640625,
+      "mean_y_delta_vs_opencl": -11.662405598958333,
+      "mean_absolute_y_delta_vs_opencl": 11.662405598958333,
+      "differing_bytes_vs_opencl": 2752352
+    },
+    {
+      "name": "120-vaapi",
+      "sha256": "c8ec0071d0168f9c331ad8edb6390bf4de26fe2750bcc3c7a2ff75df57be62e4",
+      "mean_y": 39.473419921875,
+      "mean_y_delta_vs_opencl": -27.648052083333333,
+      "mean_absolute_y_delta_vs_opencl": 27.648223958333332,
+      "differing_bytes_vs_opencl": 2951036
+    },
+    {
+      "name": "180-opencl",
+      "sha256": "26e70ebdb079a7253301b1f85ff621aa0bc38c7dadda8507cca2102a9a5581b0",
+      "mean_y": 55.89970963541667,
+      "mean_y_delta_vs_opencl": 0.0,
+      "mean_absolute_y_delta_vs_opencl": 0.0,
+      "differing_bytes_vs_opencl": 0
+    },
+    {
+      "name": "180-peak100",
+      "sha256": "bd9f9455d933d857ade406de965ca94c68b2610e391136641ac71ff01802b74f",
+      "mean_y": 31.230834635416667,
+      "mean_y_delta_vs_opencl": -24.668875,
+      "mean_absolute_y_delta_vs_opencl": 24.668875,
+      "differing_bytes_vs_opencl": 2898245
+    },
+    {
+      "name": "180-peak1000",
+      "sha256": "bd9f9455d933d857ade406de965ca94c68b2610e391136641ac71ff01802b74f",
+      "mean_y": 31.230834635416667,
+      "mean_y_delta_vs_opencl": -24.668875,
+      "mean_absolute_y_delta_vs_opencl": 24.668875,
+      "differing_bytes_vs_opencl": 2898245
+    },
+    {
+      "name": "180-peak400",
+      "sha256": "bd9f9455d933d857ade406de965ca94c68b2610e391136641ac71ff01802b74f",
+      "mean_y": 31.230834635416667,
+      "mean_y_delta_vs_opencl": -24.668875,
+      "mean_absolute_y_delta_vs_opencl": 24.668875,
+      "differing_bytes_vs_opencl": 2898245
+    },
+    {
+      "name": "180-static",
+      "sha256": "33f1683b1335c2c6b9ac9f18d1b9e41f71cf0bf81a15f6a008ffaafb532ccdcc",
+      "mean_y": 45.429411458333334,
+      "mean_y_delta_vs_opencl": -10.470298177083333,
+      "mean_absolute_y_delta_vs_opencl": 10.470298177083333,
+      "differing_bytes_vs_opencl": 2688228
+    },
+    {
+      "name": "180-vaapi",
+      "sha256": "bd9f9455d933d857ade406de965ca94c68b2610e391136641ac71ff01802b74f",
+      "mean_y": 31.230834635416667,
+      "mean_y_delta_vs_opencl": -24.668875,
+      "mean_absolute_y_delta_vs_opencl": 24.668875,
+      "differing_bytes_vs_opencl": 2898245
+    }
+  ]
+}

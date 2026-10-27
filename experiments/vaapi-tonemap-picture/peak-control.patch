@@ -1,0 +1,40 @@
+--- a/libavfilter/vf_tonemap_vaapi.c
++++ b/libavfilter/vf_tonemap_vaapi.c
+@@ -41,6 +41,7 @@
+
+     char *mastering_display;
+     char *content_light;
++    int peak_nits;
+
+     VAHdrMetaDataHDR10  in_metadata;
+     VAHdrMetaDataHDR10  out_metadata;
+@@ -155,6 +156,9 @@
+     } else {
+         av_log(avctx, AV_LOG_DEBUG, "No content light level from input\n");
+     }
++    if (ctx->peak_nits)
++        ctx->in_metadata.max_content_light_level = ctx->peak_nits;
++
+     return 0;
+ }
+
+@@ -256,6 +260,10 @@
+     }
+
+     memcpy(hdrtm_param->data.metadata, &ctx->in_metadata, sizeof(VAHdrMetaDataHDR10));
++    av_log(avctx, AV_LOG_DEBUG, "Probe submitted HDR metadata: MaxCLL=%u MaxFALL=%u mastering=%u\n",
++           ((VAHdrMetaDataHDR10 *)hdrtm_param->data.metadata)->max_content_light_level,
++           ((VAHdrMetaDataHDR10 *)hdrtm_param->data.metadata)->max_pic_average_light_level,
++           ((VAHdrMetaDataHDR10 *)hdrtm_param->data.metadata)->max_display_mastering_luminance);
+
+     vas = vaUnmapBuffer(vpp_ctx->hwctx->display, vpp_ctx->filter_buffers[0]);
+     if (vas != VA_STATUS_SUCCESS) {
+@@ -538,6 +546,8 @@
+     { "t",        "Output color transfer characteristics set",
+       OFFSET(color_transfer_string),  AV_OPT_TYPE_STRING,
+       { .str = NULL }, .flags = FLAGS, .unit = "transfer" },
++    { "peak_nits", "Experimental input peak override in nits; zero preserves metadata",
++      OFFSET(peak_nits), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 65535, FLAGS },
+     { "display",  "set mastering display colour volume",
+       OFFSET(mastering_display),      AV_OPT_TYPE_STRING,
+       { .str = NULL }, .flags = FLAGS },

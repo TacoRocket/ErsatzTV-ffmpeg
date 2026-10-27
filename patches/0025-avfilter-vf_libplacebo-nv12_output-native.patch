@@ -1,0 +1,36 @@
+Fork only. Add the value native to the libplacebo filter option nv12_output
+when libplacebo defines PL_RENDERER_NV12_OUTPUT_NATIVE
+(patches/libplacebo/0002): libplacebo's own NV12 output (Mitchell chroma)
+with Y written during the color pass and UV kept in RG16F scratch. It
+assumes the fp16 attachment truncation measured on Intel ANV and covers
+1920x1080 targets; others keep the normal output path.
+
+diff --git a/libavfilter/vf_libplacebo.c b/libavfilter/vf_libplacebo.c
+--- a/libavfilter/vf_libplacebo.c
++++ b/libavfilter/vf_libplacebo.c
+@@ -1613,6 +1613,11 @@ fail:
+ 
+ #define OFFSET(x) offsetof(LibplaceboContext, x)
+ #define STATIC (AV_OPT_FLAG_FILTERING_PARAM | AV_OPT_FLAG_VIDEO_PARAM)
++#ifdef PL_RENDERER_NV12_OUTPUT_NATIVE
++#define NV12_OUTPUT_MAX PL_NV12_OUTPUT_NATIVE
++#else
++#define NV12_OUTPUT_MAX PL_NV12_OUTPUT_MATCH
++#endif
+ #define DYNAMIC (STATIC | AV_OPT_FLAG_RUNTIME_PARAM)
+ 
+ static const AVOption libplacebo_options[] = {
+@@ -1821,9 +1826,12 @@ static const AVOption libplacebo_options[] = {
+         { "white", "White noise", 0, AV_OPT_TYPE_CONST, {.i64 = PL_DITHER_WHITE_NOISE}, 0, 0, STATIC, .unit = "dither" },
+     { "dither_lut_size", "Dithering LUT size", OFFSET(dither_lut_size), AV_OPT_TYPE_INT, {.i64 = 6}, 1, 8, STATIC },
+ #ifdef PL_RENDERER_NV12_OUTPUT
+-    { "nv12_output", "Direct NV12 output", OFFSET(nv12_output), AV_OPT_TYPE_INT, {.i64 = PL_NV12_OUTPUT_OFF}, PL_NV12_OUTPUT_OFF, PL_NV12_OUTPUT_MATCH, STATIC, .unit = "nv12_output" },
++    { "nv12_output", "Direct NV12 output", OFFSET(nv12_output), AV_OPT_TYPE_INT, {.i64 = PL_NV12_OUTPUT_OFF}, PL_NV12_OUTPUT_OFF, NV12_OUTPUT_MAX, STATIC, .unit = "nv12_output" },
+         { "off", "Normal output", 0, AV_OPT_TYPE_CONST, {.i64 = PL_NV12_OUTPUT_OFF}, 0, 0, STATIC, .unit = "nv12_output" },
+         { "match", "One pass, same output as format=rgba followed by scale_vulkan=format=nv12:out_range=limited", 0, AV_OPT_TYPE_CONST, {.i64 = PL_NV12_OUTPUT_MATCH}, 0, 0, STATIC, .unit = "nv12_output" },
++#ifdef PL_RENDERER_NV12_OUTPUT_NATIVE
++        { "native", "libplacebo's own NV12 output (Mitchell chroma), Y written in the color pass", 0, AV_OPT_TYPE_CONST, {.i64 = PL_NV12_OUTPUT_NATIVE}, 0, 0, STATIC, .unit = "nv12_output" },
++#endif
+ #endif
+     { "dither_temporal", "Enable temporal dithering", OFFSET(dither_temporal), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, DYNAMIC },
+ 

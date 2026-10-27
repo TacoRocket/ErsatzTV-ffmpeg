@@ -1,0 +1,183 @@
+From: TacoRocket
+Subject: [PATCH] renderer: native NV12 output with producer storage
+
+Apply after 0001-nv12-direct-output-match.patch on libplacebo v7.360.1.
+
+PL_NV12_OUTPUT_NATIVE (fork only) keeps libplacebo's own NV12 output and
+chroma filter (Mitchell) unchanged, but writes Y during the color pass and
+keeps UV in RG16F scratch for the existing chroma passes, instead of
+rendering a full-resolution intermediate first. This is the producer-storage
+path of TacoRocket/ErsatzTV-ffmpeg PR80 with its padding extension, moved
+behind the per-renderer selector of the base patch.
+
+It assumes the fp16 attachment truncation measured on Intel ANV; Vulkan
+does not promise this rounding on other devices. The gate covers 1920x1080
+output, full frame or an even-aligned rectangle inside bars. On the
+i3-1220P its output is byte-identical to the previous producer-storage
+patches over 24 frames of full-frame, pillarbox and letterbox fixtures.
+
+LGPL-2.1-or-later.
+---
+--- a/src/renderer.c
++++ b/src/renderer.c
+@@ -2661,13 +2661,96 @@
+                                                   PL_INTENT_RELATIVE_COLORIMETRIC);
+     pl_matrix3x3_apply(&tr, out_color);
+     pl_color_delinearize(csp, out_color);
++}
++
++// Native: libplacebo's own NV12 output, chroma filter (Mitchell) unchanged.
++// Y is written during the color pass and UV stays in RG16F scratch for the
++// existing chroma passes. Assumes the fp16 attachment truncation measured on
++// Intel ANV; Vulkan does not promise this rounding on other devices.
++// Returns 1 when used, 0 to keep the original path, -1 on dispatch failure.
++static int inline_nv12_native(struct pass_state *pass, float scale)
++{
++    pl_renderer rr = pass->rr;
++    const struct pl_render_params *params = pass->params;
++    const struct pl_frame *target = &pass->target;
++    struct img *img = &pass->img;
++    const struct pl_plane *y = &target->planes[0];
++    pl_fmt original = img->fmt ? img->fmt : pass->fbofmt[img->comps];
++    pl_fmt scratch = pass->fbofmt[2];
++    const pl_rect2d rect = pass->dst_rect;
++
++    if (y->texture->params.w != 1920 || y->texture->params.h != 1080 ||
++        !original || !scratch || original->type != PL_FMT_FLOAT ||
++        original->component_depth[0] != 16 ||
++        original->component_depth[1] != 16 ||
++        original->component_depth[2] != 16 ||
++        scratch->type != PL_FMT_FLOAT || scratch->num_components != 2 ||
++        scratch->component_depth[0] != 16 ||
++        scratch->component_depth[1] != 16 ||
++        !(scratch->caps & PL_FMT_CAP_STORABLE))
++        return 0;
++
++    pl_tex tex = get_fbo(pass, img->w, img->h, scratch, 2, PL_DEBUG_TAG);
++    if (!tex)
++        return -1;
++    pl_shader sh = img_sh(pass, img);
++    ident_t output = sh_desc(sh, (struct pl_shader_desc) {
++        .binding.object = y->texture,
++        .desc = {
++            .name = "nv12_y_output",
++            .type = PL_DESC_STORAGE_IMG,
++            .access = PL_DESC_ACCESS_WRITEONLY,
++        },
++    });
++
++    // UV must remain undithered until after the unchanged chroma filter.
++    GLSL("vec2 inline_uv = color.gb;\n"
++         "uint inline_half = packHalf2x16(vec2(color.r, 0.0)) & 65535u;\n"
++         "if (abs(unpackHalf2x16(inline_half).r) > abs(color.r))\n"
++         "    inline_half -= 1u;\n"
++         "color.r = unpackHalf2x16(inline_half).r;\n");
++    if (params->dither_params) {
++        struct pl_dither_params dparams = *params->dither_params;
++        if (!params->disable_dither_gamma_correction)
++            dparams.transfer = target->color.transfer;
++        // The producer uses picture-local coordinates; output dithering uses
++        // the final frame, including any bars outside the picture rectangle.
++        sh_dither_at(sh, 8, &rr->dither_state, &dparams, rect.x0, rect.y0);
++    }
++    // Compute producers can run beyond the target's last row/workgroup.
++    GLSL("ivec2 inline_pos = ivec2(gl_FragCoord.xy);\n"
++         "if (all(greaterThanEqual(inline_pos, ivec2(0))) &&\n"
++         "    all(lessThan(inline_pos, ivec2(%d, %d))))\n"
++         "    imageStore("$", inline_pos + ivec2(%d, %d), vec4(color.r / "$", 0.0, 0.0, 1.0));\n"
++         "color = vec4(inline_uv, 0.0, 1.0);\n",
++         img->w, img->h, output, rect.x0, rect.y0, SH_FLOAT(scale));
++    sh_describe(sh, "inline NV12 Y output and UV scratch");
++    if (!rr->inline_nv12_logged) {
++        PL_INFO(rr, "nv12_output: accepted mode=native original=%s scratch=%s producer=%s",
++                original->name, scratch->name,
++                pl_shader_is_compute(sh) ? "compute" : "fragment");
++        rr->inline_nv12_logged = true;
++    }
++    if (!pl_dispatch_finish(rr->dp, pl_dispatch_params(
++            .shader = &img->sh, .target = tex)))
++        return -1;
++
++    img->tex = tex;
++    img->fmt = NULL;
++    img->comps = 2;
++    img->err_msg = NULL;
++    img->err_enum = PL_RENDER_ERR_NONE;
++    img->err_tex = NULL;
++    return 1;
+ }
+ 
+ // Writes the NV12 target directly from the final color pass.
+ // Match reproduces libplacebo format=rgba followed by FFmpeg
+ // scale_vulkan=format=nv12:out_range=limited in one pass.
+-// Returns 2 when both planes were written, 0 to keep the original output
+-// path, -1 on dispatch failure.
++// Native keeps libplacebo's own chroma passes (inline_nv12_native).
++// Returns 2 when both planes were written, 1 when Y was written and UV is left
++// for the plane passes, 0 to keep the original output path, -1 on dispatch
++// failure.
+ static int inline_nv12_output(struct pass_state *pass, float scale,
+                               enum pl_nv12_output mode)
+ {
+@@ -2719,6 +2802,13 @@
+         (translated && params->dither_params &&
+          params->dither_params->method == PL_DITHER_WHITE_NOISE))
+     {
++        goto unsupported;
++    }
++
++    if (mode == PL_NV12_OUTPUT_NATIVE) {
++        int native = inline_nv12_native(pass, scale);
++        if (native)
++            return native;
+         goto unsupported;
+     }
+ 
+@@ -3110,7 +3200,7 @@
+             return false;
+     }
+ 
+-    for (int p = inline_nv12 == 2 ? target->num_planes : 0;
++    for (int p = inline_nv12 == 2 ? target->num_planes : inline_nv12;
+          p < target->num_planes; p++) {
+         const struct pl_plane *plane = &target->planes[p];
+         float rx = (float) plane->texture->params.w / ref->texture->params.w,
+@@ -3155,7 +3245,8 @@
+                     .y0 = (ry0 - plane_rectf.y0) / rry,
+                     .y1 = (ry1 - plane_rectf.y0) / rry,
+                 },
+-                .component_mask = plane_comps(plane, params),
++                .components = inline_nv12 == 1 ? 2 : 0,
++                .component_mask = inline_nv12 == 1 ? 0 : plane_comps(plane, params),
+             };
+ 
+             if (!src.tex) {
+@@ -3192,6 +3283,9 @@
+ 
+         }
+ 
++        if (inline_nv12 == 1)
++            GLSL("color = vec4(0.0, color.rg, 1.0);\n");
++
+         // Ignore dithering for > 16-bit outputs by default, since it makes
+         // little sense to do so (and probably just adds errors)
+         int depth = target->repr.bits.color_depth, applied_dither = 0;
+--- a/src/include/libplacebo/renderer.h
++++ b/src/include/libplacebo/renderer.h
+@@ -81,8 +81,16 @@
+     // scale_vulkan=format=nv12:out_range=limited. Targets that do not
+     // qualify keep the normal output path.
+     PL_NV12_OUTPUT_MATCH,
++
++    // libplacebo's own NV12 output (Mitchell chroma, unchanged) with Y written
++    // during the color pass and UV kept in RG16F scratch. Assumes the fp16
++    // attachment truncation measured on Intel ANV; 1920x1080 targets only.
++    PL_NV12_OUTPUT_NATIVE,
+ };
+ 
++// PL_NV12_OUTPUT_NATIVE exists (fork patch).
++#define PL_RENDERER_NV12_OUTPUT_NATIVE 1
++
+ // Selects the direct NV12 output mode for this renderer.
+ PL_API void pl_renderer_set_nv12_output(pl_renderer rr, enum pl_nv12_output mode);
+ 

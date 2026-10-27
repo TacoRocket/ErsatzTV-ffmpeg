@@ -1,0 +1,121 @@
+[
+  {
+    "route": "opencl",
+    "workers": 3,
+    "frames": 1080,
+    "paced": true,
+    "valid": true,
+    "contaminated": false,
+    "slowest_seconds": 45.046,
+    "speed_x": 0.9989788216489811,
+    "fps_per_stream": 23.975491719575544,
+    "engine_busy_middle60": {
+      "Render/3D": 54.246285566037734,
+      "Video": 52.648891735849055,
+      "VideoEnhance": 34.50288252830189
+    },
+    "gpu_mhz": 1061.8845983962265
+  },
+  {
+    "route": "lut",
+    "workers": 3,
+    "frames": 1080,
+    "paced": true,
+    "valid": true,
+    "contaminated": false,
+    "slowest_seconds": 45.063,
+    "speed_x": 0.9986019572598361,
+    "fps_per_stream": 23.966446974236067,
+    "engine_busy_middle60": {
+      "Render/3D": 1.6941445094339622,
+      "Video": 50.0783009245283,
+      "VideoEnhance": 47.11195616981132
+    },
+    "gpu_mhz": 731.7322351698114
+  },
+  {
+    "route": "fixed",
+    "workers": 3,
+    "frames": 1080,
+    "paced": true,
+    "valid": true,
+    "contaminated": false,
+    "slowest_seconds": 45.056,
+    "speed_x": 0.9987571022727273,
+    "fps_per_stream": 23.970170454545457,
+    "engine_busy_middle60": {
+      "Render/3D": 53.296343698113205,
+      "Video": 57.91615726415095,
+      "VideoEnhance": 37.98976513207547
+    },
+    "gpu_mhz": 976.0947995283019
+  },
+  {
+    "route": "fixed",
+    "workers": 4,
+    "frames": 720,
+    "paced": false,
+    "valid": true,
+    "contaminated": false,
+    "slowest_seconds": 25.766,
+    "speed_x": 1.1643250795622138,
+    "fps_per_stream": 27.943801909493132,
+    "engine_busy_middle60": {
+      "Render/3D": 93.81408449999999,
+      "Video": 90.7359744,
+      "VideoEnhance": 56.97838313333333
+    },
+    "gpu_mhz": 1098.5505639
+  },
+  {
+    "route": "lut",
+    "workers": 4,
+    "frames": 720,
+    "paced": false,
+    "valid": true,
+    "contaminated": false,
+    "slowest_seconds": 22.986,
+    "speed_x": 1.3051422605063951,
+    "fps_per_stream": 31.323414252153484,
+    "engine_busy_middle60": {
+      "Render/3D": 3.8485342592592593,
+      "Video": 99.27721244444444,
+      "VideoEnhance": 89.31688862962963
+    },
+    "gpu_mhz": 1098.5504637407407
+  },
+  {
+    "route": "lut",
+    "workers": 4,
+    "frames": 720,
+    "paced": false,
+    "valid": true,
+    "contaminated": false,
+    "slowest_seconds": 22.874,
+    "speed_x": 1.311532744600857,
+    "fps_per_stream": 31.476785870420567,
+    "engine_busy_middle60": {
+      "Render/3D": 1.9615077777777779,
+      "Video": 99.28321274074074,
+      "VideoEnhance": 89.83781433333333
+    },
+    "gpu_mhz": 1099.2443562962962
+  },
+  {
+    "route": "fixed",
+    "workers": 4,
+    "frames": 720,
+    "paced": false,
+    "valid": true,
+    "contaminated": false,
+    "slowest_seconds": 25.302,
+    "speed_x": 1.1856770215793218,
+    "fps_per_stream": 28.456248517903724,
+    "engine_busy_middle60": {
+      "Render/3D": 93.06297062068965,
+      "Video": 91.9414844137931,
+      "VideoEnhance": 57.60439231034483
+    },
+    "gpu_mhz": 1098.3407144482758
+  }
+]
