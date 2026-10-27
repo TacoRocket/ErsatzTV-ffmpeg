@@ -1,0 +1,19 @@
+--- a/src/renderer.c
++++ b/src/renderer.c
+@@ -2719,9 +2719,15 @@
+     // Opt-in assumes fp16 attachment truncation, as measured on Intel ANV.
+     // Vulkan does not promise this rounding on other devices.
+     // UV must remain undithered until after the unchanged chroma filter.
++    // Decode the packed magnitude explicitly: a pack/unpack round trip can
++    // be folded to the original float before the comparison on Mesa lavapipe.
+     GLSL("vec2 inline_uv = color.gb;\n"
+          "uint inline_half = packHalf2x16(vec2(color.r, 0.0)) & 65535u;\n"
+-         "if (abs(unpackHalf2x16(inline_half).r) > abs(color.r))\n"
++         "uint inline_exp = (inline_half >> 10u) & 31u;\n"
++         "uint inline_frac = inline_half & 1023u;\n"
++         "uint inline_f32 = ((inline_exp == 31u ? 255u : inline_exp + 112u) << 23u) | (inline_frac << 13u);\n"
++         "float inline_abs = inline_exp == 0u ? float(inline_frac) * (1.0 / 16777216.0) : uintBitsToFloat(inline_f32);\n"
++         "if (inline_abs > abs(color.r))\n"
+          "    inline_half -= 1u;\n"
+          "color.r = unpackHalf2x16(inline_half).r;\n");
+     if (params->dither_params) {
