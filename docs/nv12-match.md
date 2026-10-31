@@ -61,7 +61,8 @@ alone missed about 0.1% of luma bytes by one code value.
 ## Measurements
 
 Intel i3-1220P (Gen12, ANV/iHD, Mesa 25.2.8), packaged image built from
-`main` + patch 0031 + this change with `DIRECT_NV12_OUTPUT=1`.
+`main` + the then-numbered patch 0023 (now 0031) + this change
+with `DIRECT_NV12_OUTPUT=1`.
 
 Picture: raw NV12 (`hwdownload,format=nv12`) compared with `cmp` against the
 RGBA route from the same image. Zero differing bytes for 24 frames each of

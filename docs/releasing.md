@@ -54,8 +54,12 @@ The dry run signs and notarizes the macOS builds and checks the signatures. It d
 This fork uses `ci.yml` and the shared `build.yml` to build and test pull requests
 without publishing release assets or container images. It does not install
 upstream's develop publication workflow, which targets ErsatzTV-owned registries
-and repositories. The manual `credit-join-runtime.yml` workflow remains the
-fork's optional credit-join runtime build path.
+and repositories. This exclusion is intentional: the fork keeps publication in
+its own manual workflow rather than offering a second action with upstream
+destinations. Future upstream edits to `develop.yml` can cause modify/delete
+conflicts during a sync; review those edits and retain the exclusion unless a
+fork publication use case is approved. The manual `credit-join-runtime.yml`
+workflow remains the fork's optional credit-join runtime build path.
 
 ## Run the FATE sweep
 

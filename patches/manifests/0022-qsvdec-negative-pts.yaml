@@ -76,7 +76,7 @@ last_verified:
     (14.2 / 14.9 dB). QSV decode of raw H.264 and MPEG-2 streams and of H.264
     and MPEG-2 in AVI gives the same frame count and timestamps as stock
     n9.0.2; the first version put them at about -95443 s.
-    tests/qsvdec-pkt-dts.sh (0032) still passes. ErsatzTV next main
+    tests/qsvdec-pkt-dts.sh (0024) still passes. ErsatzTV next main
     (b80e19f) qsv suite on the N150 (Windows) and on Intel UHD
     620 (KBL, 8086:5917, Debian 13, iHD 25.2.3, libmfx1 22.5.4): the same
     results as the first version (fixtures 558/558; external media

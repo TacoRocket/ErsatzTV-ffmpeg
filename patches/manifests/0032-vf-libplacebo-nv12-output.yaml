@@ -23,8 +23,8 @@ last_verified:
   version: n8.1.2
   date: 2026-10-26
   how: >-
-    Packaged amd64 image (main + 0031 + this patch, DIRECT_NV12_OUTPUT=1) on an
-    Intel i3-1220P (Gen12, ANV/iHD, Mesa 25.2.8): option listed; raw NV12 equal
+    Packaged amd64 image (main + then-numbered 0023 (now 0031) + this patch,
+    DIRECT_NV12_OUTPUT=1) on an Intel i3-1220P (Gen12, ANV/iHD, Mesa 25.2.8): option listed; raw NV12 equal
     to the RGBA route on 1080p/720p fixtures and 2160p HDR10/DV8 sources. Built
     with DIRECT_NV12_OUTPUT=0: option absent.
 remove_when: "libplacebo or FFmpeg provides a single-pass NV12 output that matches scale_vulkan, or the RGBA route is retired."

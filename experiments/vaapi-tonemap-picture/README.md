@@ -9,8 +9,8 @@ The intended outcome is to retain the lower general-render usage of VAAPI HDR
 tone mapping while matching the existing OpenCL Hable picture. VAAPI instead
 produces substantially darker pixels on the tested HDR10 material. The relevant
 boundary is FFmpeg's tone-mapping filters and the Intel driver's implementation,
-not the H264 encoder, NV12 shader optimization, or player. Patch 0026's metadata
-fallback remains unchanged; the initial diagnostic controls below did not fix
+not the H264 encoder, NV12 shader optimization, or player. The metadata
+correction in then-numbered patch 0026 (now 0034) remains unchanged; the initial diagnostic controls below did not fix
 the picture. The subsequently authorized hardware LUT probe is recorded below.
 
 ## Initial picture-attribution method
@@ -132,8 +132,8 @@ not byte identity or proof for all HDR sources. The first paired stills were als
 visually inspected. `lut-metrics.json` preserves the full statistics and hashes.
 
 The original VAAPI route with the new option **unset** matches the original
-0026 control byte-for-byte at the 60-second capture. Both the fixed-OpenCL and
-LUT HLS outputs decoded all 720 frames without errors. All measured encodes
+then-numbered 0026 (now 0034) control byte-for-byte at the 60-second capture. Both the
+fixed-OpenCL and LUT HLS outputs decoded all 720 frames without errors. All measured encodes
 selected the low-power VAAPI H264 entrypoint.
 
 ### Resource and speed results
@@ -183,19 +183,20 @@ host preparation. It is **not** a deployment-ready replacement for normal
 scene-adaptive OpenCL. Further adaptation and packaging remain separate work;
 this checkpoint does not authorize a general LUT framework or deployment.
 
-Apply `hardware-lut.patch` directly after fork patches 0001–0026, without
-`peak-control.patch`. Rebuild FFmpeg, run `python3 make_lut.py` with NumPy available,
+Apply `hardware-lut.patch` directly after patches 0001–0034 (then numbered
+0001–0026), without `peak-control.patch`. Rebuild FFmpeg, run
+`python3 make_lut.py` with NumPy available,
 and append `:probe_lut=/absolute/path/hable65.bin` to the VAAPI filter above.
 The original unmodified binary and the separate `static-opencl.patch` binary
 remain the controls. Use the identity table only as an upload diagnostic.
 
 ## Reproduction and ownership
 
-The patches apply to FFmpeg 8.1.2 after this fork's patches 0001–0026. Apply each
-only to a disposable source tree with `patch -p1`; rebuild FFmpeg after changing
+The patches apply to FFmpeg 8.1.2 after patches 0001–0034 (then numbered
+0001–0026). Apply each only to a disposable source tree with `patch -p1`; rebuild FFmpeg after changing
 the OpenCL kernel because it is embedded in the binary. Preserve an unmodified
-0026 binary as the control. `static-opencl.patch` is diagnostic only and must not
-be confused with the normal OpenCL control in speed or picture claims.
+binary through then-numbered patch 0026 (now 0034) as the control.
+`static-opencl.patch` is diagnostic only and must not be confused with the normal OpenCL control in speed or picture claims.
 
 Compile the capability query with:
 
