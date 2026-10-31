@@ -1,0 +1,71 @@
+name: Credit join runtime
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  runtime:
+    if: github.repository == 'TacoRocket/ErsatzTV-ffmpeg'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+      - name: Make room for the pinned dependency image
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h /
+      - name: Build identities
+        run: |
+          {
+            sh scripts/release-vars.sh "$(git rev-parse HEAD)" dev
+            echo "DEPS_IMAGE=$(jq -er '.amd64.image' images/linux/deps.lock.json)"
+            echo "SOURCE_COMMIT=$(git rev-parse HEAD)"
+          } >> "$GITHUB_ENV"
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build full runtime
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: images/linux/amd64/Dockerfile
+          platforms: linux/amd64
+          build-args: |
+            DEPS_IMAGE=${{ env.DEPS_IMAGE }}
+            FFMPEG_VERSION=${{ env.FFMPEG_VERSION }}
+            FFMPEG_SHA256=${{ env.FFMPEG_SHA256 }}
+            FFMPEG_EXTRA_VERSION=${{ env.FFMPEG_EXTRA_VERSION }}
+            DIRECT_NV12_OUTPUT=1
+            VAAPI_HABLE_LUT=1
+            BUILD_JOBS=3
+          push: false
+          load: true
+          tags: credit-join-runtime:validation
+      - name: Verify join and export runtime
+        run: |
+          mkdir -p artifact
+          docker run --rm --entrypoint bash -v "$PWD/patches:/patches:ro" credit-join-runtime:validation \
+            /patches/tests/concat-preserve-source-timestamps.sh /usr/local/bin/ffmpeg | tee artifact/concat-test.txt
+          docker run --rm credit-join-runtime:validation -version > artifact/ffmpeg-version.txt
+          docker image inspect credit-join-runtime:validation > artifact/image-inspect.json
+          jq -n --arg source "$SOURCE_COMMIT" --arg deps "$DEPS_IMAGE" \
+            --arg version "$FFMPEG_VERSION" --arg tarball "$FFMPEG_SHA256" \
+            '{source_commit:$source, dependency_image:$deps, ffmpeg_version:$version, ffmpeg_tarball_sha256:$tarball, direct_nv12_output:1, vaapi_hable_lut:1}' > artifact/build.json
+          docker save credit-join-runtime:validation | gzip -1 > artifact/credit-join-runtime.tar.gz
+          (cd artifact && sha256sum credit-join-runtime.tar.gz > SHA256SUMS)
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: credit-join-runtime-${{ env.SOURCE_COMMIT }}
+          path: artifact/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
