@@ -2,8 +2,6 @@ name: Credit join runtime
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [main]
 
 permissions:
   contents: read
@@ -11,17 +9,13 @@ permissions:
 
 jobs:
   runtime:
-    if: >-
-      github.repository == 'TacoRocket/ErsatzTV-ffmpeg' &&
-      (github.event_name == 'workflow_dispatch' ||
-       (github.event.pull_request.head.repo.full_name == github.repository &&
-        github.head_ref == 'feat/credit-squeeze-join'))
+    if: github.repository == 'TacoRocket/ErsatzTV-ffmpeg'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
       - name: Make room for the pinned dependency image
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc

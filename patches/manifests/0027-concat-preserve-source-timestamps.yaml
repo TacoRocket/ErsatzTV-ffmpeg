@@ -18,5 +18,5 @@ notes:
 last_verified:
   version: n8.1.2
   date: 2026-10-30
-  how: "Patched source build on macOS arm64 passed the synthetic gap regression and default-off equivalence. Prior isolated Linux prototype matched AAC packets and natural end. Full runtime validation pending."
+  how: "Patched source build on macOS arm64 passed the synthetic gap regression and default-off equivalence. Prior isolated Linux prototype matched AAC packets and natural end. Full linux/amd64 runtime build and shell regression passed at c88534f54dae700f285b9315db587fbfe5bf2e68: https://github.com/TacoRocket/ErsatzTV-ffmpeg/actions/runs/41153997801. Broader isolated HLS/Intel VAAPI proof and its limits are recorded in docs/concat-preserve-timestamps.md."
 remove_when: "The maintained FFmpeg release provides an equivalent timestamp-preserving sequential-video join."
