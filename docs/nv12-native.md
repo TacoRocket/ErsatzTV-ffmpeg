@@ -26,5 +26,5 @@ Patches: `patches/libplacebo/0002-nv12-direct-output-native.patch`, applied
 after `0001-nv12-direct-output-match.patch`, adds `PL_NV12_OUTPUT_NATIVE`
 (marked by `PL_RENDERER_NV12_OUTPUT_NATIVE`). It is additive: one function,
 one enum value and the plane-loop changes that let libplacebo's chroma
-passes read the scratch image. FFmpeg patch 0025 adds the option value
+passes read the scratch image. FFmpeg patch 0033 adds the option value
 `native`, compiled in only when that marker is present.

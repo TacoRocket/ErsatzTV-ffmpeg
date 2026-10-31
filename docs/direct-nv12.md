@@ -1,6 +1,6 @@
 # Experimental direct NV12 output
 
-Patch 0023 lets libplacebo render directly into writable VAAPI NV12 surfaces
+Patch 0031 lets libplacebo render directly into writable VAAPI NV12 surfaces
 when `ETV_VAAPI_DIRECT_NV12=1` is set. Without that exact value, behavior is
 unchanged. It requires patch 0019 and keeps its synchronous reverse-map wait.
 It does not change command-pool depth or libplacebo, and claims no speed gain.

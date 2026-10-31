@@ -11,7 +11,7 @@ input, `tonemap_vaapi` instead stopped after 80 frames (3.333 seconds). Starting
 at 60 seconds failed before encoding video. Both reported
 `No mastering display data from input`.
 
-Patch 0026 changes only `libavfilter/vf_tonemap_vaapi.c`. It reads each frame's
+Patch 0034 changes only `libavfilter/vf_tonemap_vaapi.c`. It reads each frame's
 mastering-display and content-light metadata first, then uses the corresponding
 input filter-link metadata when that frame lacks it. It does not invent metadata
 or add a previous-frame metadata cache as a substitute for stream metadata. The
@@ -44,7 +44,8 @@ unpublished or unlocated fix exists.
 ## Isolated validation
 
 Both control and candidate were built from the checksum-verified FFmpeg 8.1.2
-tarball with fork patches 0001-0025. Only the candidate adds 0026. The build
+tarball with the then-current fork patches 0001-0025 (before the 8.1.2-7 sync).
+Only the candidate adds the metadata fix, now numbered 0034. The build
 enables the VAAPI/OpenCL decode/filter/encode path, rather than all optional
 features of the distributed image. This is not a rebuilt production image or
 a portability matrix.

@@ -1,0 +1,60 @@
+mpeg12dec reads a picture's A53 caption user data into a53_buf_ref before
+its slices, and only mpeg_field_start() hands the buffer to a frame. Pictures
+the decoder skips (open-GOP B-frames without a reference, P-frames before the
+first I-frame, and anything dropped by -skip_frame) never get there, so their
+captions stay in the buffer and the next decoded frame gets all of them.
+
+A stream that starts mid-GOP, like a tuned-in broadcast, puts every caption
+before its first I-frame on that frame, often hundreds of cc triplets. The
+encoders write cc_count in 5 bits, so the SEI is malformed, and h264_vaapi
+fails outright when it no longer fits the packed header:
+
+  [h264_vaapi] Access unit too large: 8192 < 14608.
+  [h264_vaapi] Failed to write extra header 0: -28.
+
+Drop the buffered captions when a picture is skipped. They are not cleared
+at the picture start code, because DVD-style captions are GOP user data that
+comes before the picture header they belong to.
+
+fate-sub-mcc changes: scte20.ts opens on an open-GOP B-frame, and its four
+padding-only cc triplets no longer pile onto the first caption frame.
+
+diff --git a/libavcodec/mpeg12dec.c b/libavcodec/mpeg12dec.c
+--- a/libavcodec/mpeg12dec.c
++++ b/libavcodec/mpeg12dec.c
+@@ -2452,6 +2452,7 @@ static int decode_chunks(AVCodecContext *avctx, AVFrame *picture,
+                     if (s2->pict_type == AV_PICTURE_TYPE_B) {
+                         if (!s->closed_gop) {
+                             skip_frame = 1;
++                            av_buffer_unref(&s->a53_buf_ref);
+                             av_log(s2->avctx, AV_LOG_DEBUG,
+                                    "Skipping B slice due to open GOP\n");
+                             break;
+@@ -2465,6 +2466,7 @@ static int decode_chunks(AVCodecContext *avctx, AVFrame *picture,
+                      * we have an invalid header. */
+                     if (s2->pict_type == AV_PICTURE_TYPE_P && !s->sync) {
+                         skip_frame = 1;
++                        av_buffer_unref(&s->a53_buf_ref);
+                         av_log(s2->avctx, AV_LOG_DEBUG,
+                                "Skipping P slice due to !sync\n");
+                         break;
+@@ -2476,6 +2478,7 @@ static int decode_chunks(AVCodecContext *avctx, AVFrame *picture,
+                      s2->pict_type != AV_PICTURE_TYPE_I) ||
+                     avctx->skip_frame >= AVDISCARD_ALL) {
+                     skip_frame = 1;
++                    av_buffer_unref(&s->a53_buf_ref);
+                     break;
+                 }
+ 
+diff --git a/tests/fate/subtitles.mak b/tests/fate/subtitles.mak
+--- a/tests/fate/subtitles.mak
++++ b/tests/fate/subtitles.mak
+@@ -133,7 +133,7 @@
+ FATE_SUBTITLES-$(call ALLYES, AVDEVICE LAVFI_INDEV MOVIE_FILTER MPEGTS_DEMUXER MCC_MUXER EIA608_TO_SMPTE436M_BSF) += fate-sub-mcc
+ fate-sub-mcc: CMD = md5 -f lavfi -i "movie=$(TARGET_SAMPLES)/sub/scte20.ts[out0+subcc]" -map 0:s -c copy -override_time_code_rate ntsc -creation_time "1970-01-02T00:00:00" -bitexact -f mcc
+ fate-sub-mcc: CMP = oneline
+-fate-sub-mcc: REF = 73982c4db86f3a809c1e8262d3701fc2
++fate-sub-mcc: REF = 1253c9f01124447cf03e79f34b52b7fa
+ 
+ FATE_SUBTITLES-$(call DEMMUX, MCC, MCC, SMPTE436M_TO_EIA608_BSF EIA608_TO_SMPTE436M_BSF) += fate-sub-mcc-remux-eia608-bsf
+ fate-sub-mcc-remux-eia608-bsf: CMD = fmtstdout mcc -f mcc -i $(SRC_PATH)/tests/ref/fate/sub-mcc-remux -map 0:s -c copy -bsf "eia608_to_smpte436m=cdp_frame_rate=60000/1001:initial_cdp_sequence_cntr=65535:line_number=11" -override_time_code_rate ntsc -creation_time "1970-01-02T00:00:00"

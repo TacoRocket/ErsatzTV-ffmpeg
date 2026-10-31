@@ -1,6 +1,6 @@
 # Joining sequential video sections without changing their clock
 
-Patch `0027-avfilter-concat-preserve-source-timestamps.patch` adds an opt-in
+Patch `0035-avfilter-concat-preserve-source-timestamps.patch` adds an opt-in
 `preserve_ts=1` option to FFmpeg's concat filter. It joins sequential trims of
 one source while preserving source timestamps and frame durations. This lets a
 caller defer a credits effect until its section is requested without shifting

@@ -16,7 +16,7 @@ scale_vulkan=format=nv12:out_range=limited,
 hwmap=derive_device=vaapi:reverse=1,format=vaapi
 ```
 
-With Match (needs `ETV_VAAPI_DIRECT_NV12=1` for patch 0023's writable target):
+With Match (needs `ETV_VAAPI_DIRECT_NV12=1` for patch 0031's writable target):
 
 ```
 hwmap=derive_device=drm,format=drm_prime,
@@ -31,7 +31,7 @@ The encoder side is unchanged (`h264_vaapi`, including `low_power=1`).
 The amd64 Docker build argument `DIRECT_NV12_OUTPUT=1` rebuilds the pinned
 libplacebo v7.360.1 with `patches/libplacebo/0001-nv12-direct-output-match.patch`.
 That patch adds `pl_renderer_set_nv12_output()` and the
-`PL_RENDERER_NV12_OUTPUT` marker. FFmpeg patch 0024 compiles the
+`PL_RENDERER_NV12_OUTPUT` marker. FFmpeg patch 0032 compiles the
 `nv12_output` option into the libplacebo filter only when that marker is
 present. So `ffmpeg -h filter=libplacebo` lists `nv12_output` only in builds
 that implement it; a stock-libplacebo build has no such option. The option
@@ -61,7 +61,7 @@ alone missed about 0.1% of luma bytes by one code value.
 ## Measurements
 
 Intel i3-1220P (Gen12, ANV/iHD, Mesa 25.2.8), packaged image built from
-`main` + patch 0023 + this change with `DIRECT_NV12_OUTPUT=1`.
+`main` + patch 0031 + this change with `DIRECT_NV12_OUTPUT=1`.
 
 Picture: raw NV12 (`hwdownload,format=nv12`) compared with `cmp` against the
 RGBA route from the same image. Zero differing bytes for 24 frames each of
