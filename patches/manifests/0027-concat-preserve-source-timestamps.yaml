@@ -1,0 +1,22 @@
+id: concat-preserve-source-timestamps
+patch: 0027-avfilter-concat-preserve-source-timestamps.patch
+based_on: n8.1.2
+status: experimental-fork-only
+upstream:
+  issue: null
+  commits: []
+dependencies: []
+platforms:
+  - all
+failure_without_patch:
+  - "Normalizing sequential trims for concat loses a 300ms source gap and shifts following video relative to uninterrupted audio."
+success_with_patch:
+  - "Opt-in sequential video joins retain source frame timestamps and durations."
+notes:
+  - "One video stream, no audio; sequential sections of one source only. Default concat is unchanged."
+  - "Contract and proof limits: docs/concat-preserve-timestamps.md."
+last_verified:
+  version: n8.1.2
+  date: 2026-10-30
+  how: "Patched source build on macOS arm64 passed the synthetic gap regression and default-off equivalence. Prior isolated Linux prototype matched AAC packets and natural end. Full runtime validation pending."
+remove_when: "The maintained FFmpeg release provides an equivalent timestamp-preserving sequential-video join."
