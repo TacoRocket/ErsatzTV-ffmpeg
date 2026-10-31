@@ -146,6 +146,8 @@ Make sure that your tool sorts `8.1.2-10` after `8.1.2-9`.
 
 - [Direct NV12 output](docs/direct-nv12.md) is an explicit Intel-validated VAAPI/Vulkan opt-in; other drivers and modifiers remain unverified.
 - [Single-pass NV12 output](docs/nv12-match.md) for libplacebo tone mapping builds on it (`DIRECT_NV12_OUTPUT=1`, `nv12_output=match`).
+- [Native NV12 output](docs/nv12-native.md) retains libplacebo's chroma filtering with `nv12_output=native`; it uses the same opt-in build and direct-NV12 prerequisites.
+- [VAAPI Hable LUT](features/vaapi-hable-lut/README.md) is an optional amd64 build feature (`VAAPI_HABLE_LUT=1`) for a fixed Hable-like picture; it does not reproduce scene-adaptive OpenCL tone mapping.
 - [VAAPI HDR metadata fallback](docs/vaapi-hdr-metadata.md) is a fork-only correction for HDR10 frames that omit available stream metadata; it has not been deployed.
 - [Timestamp-preserving video join](docs/concat-preserve-timestamps.md) keeps sequential trims on their source clock with `concat=preserve_ts=1`.
 

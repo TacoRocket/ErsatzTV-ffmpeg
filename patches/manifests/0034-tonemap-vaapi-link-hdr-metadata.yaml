@@ -1,5 +1,5 @@
 id: tonemap-vaapi-link-hdr-metadata
-patch: 0026-avfilter-tonemap-vaapi-use-link-hdr-metadata.patch
+patch: 0034-avfilter-tonemap-vaapi-use-link-hdr-metadata.patch
 based_on: n8.1.2
 status: experimental-fork-only
 upstream:

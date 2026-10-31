@@ -1,5 +1,5 @@
 id: vulkan-direct-nv12-opt-in
-patch: 0023-avutil-vulkan-direct-nv12-opt-in.patch
+patch: 0031-avutil-vulkan-direct-nv12-opt-in.patch
 based_on: n8.1.2
 status: experimental-opt-in
 upstream:

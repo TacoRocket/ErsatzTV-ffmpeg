@@ -1,5 +1,5 @@
 id: vf-libplacebo-nv12-output
-patch: 0024-avfilter-vf_libplacebo-add-nv12_output-option.patch
+patch: 0032-avfilter-vf_libplacebo-add-nv12_output-option.patch
 based_on: n8.1.2
 status: experimental-opt-in
 upstream:
@@ -7,7 +7,7 @@ upstream:
   # Depends on a local libplacebo API (patches/libplacebo/0001); not proposed to FFmpeg.
   commits: []
 dependencies:
-  - 0023-avutil-vulkan-direct-nv12-opt-in.patch   # writable VAAPI NV12 target
+  - 0031-avutil-vulkan-direct-nv12-opt-in.patch   # writable VAAPI NV12 target
   - libplacebo/0001-nv12-direct-output-match.patch # compile-time: PL_RENDERER_NV12_OUTPUT
 platforms:
   - linux-vaapi-vulkan
@@ -23,8 +23,8 @@ last_verified:
   version: n8.1.2
   date: 2026-10-26
   how: >-
-    Packaged amd64 image (main + 0023 + this patch, DIRECT_NV12_OUTPUT=1) on an
-    Intel i3-1220P (Gen12, ANV/iHD, Mesa 25.2.8): option listed; raw NV12 equal
+    Packaged amd64 image (main + then-numbered 0023 (now 0031) + this patch,
+    DIRECT_NV12_OUTPUT=1) on an Intel i3-1220P (Gen12, ANV/iHD, Mesa 25.2.8): option listed; raw NV12 equal
     to the RGBA route on 1080p/720p fixtures and 2160p HDR10/DV8 sources. Built
     with DIRECT_NV12_OUTPUT=0: option absent.
 remove_when: "libplacebo or FFmpeg provides a single-pass NV12 output that matches scale_vulkan, or the RGBA route is retired."

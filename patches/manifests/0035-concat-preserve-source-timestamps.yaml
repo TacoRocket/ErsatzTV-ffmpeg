@@ -1,5 +1,5 @@
 id: concat-preserve-source-timestamps
-patch: 0027-avfilter-concat-preserve-source-timestamps.patch
+patch: 0035-avfilter-concat-preserve-source-timestamps.patch
 based_on: n8.1.2
 status: experimental-fork-only
 upstream:
