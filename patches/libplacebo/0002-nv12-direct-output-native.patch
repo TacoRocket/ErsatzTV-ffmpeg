@@ -11,16 +11,16 @@ path of TacoRocket/ErsatzTV-ffmpeg PR80 with its padding extension, moved
 behind the per-renderer selector of the base patch.
 
 It assumes the fp16 attachment truncation measured on Intel ANV; Vulkan
-does not promise this rounding on other devices. The gate covers 1920x1080
-output, full frame or an even-aligned rectangle inside bars. On the
-i3-1220P its output is byte-identical to the previous producer-storage
-patches over 24 frames of full-frame, pillarbox and letterbox fixtures.
+does not promise this rounding on other devices. Output dimensions are not
+restricted: the existing plane-layout, alignment and storage checks decide
+eligibility. Full-frame, pillarbox and letterbox CRT output matched ordinary
+NV12 at 720p, 1080p and 2160p over 24 frames each on Intel ANV.
 
 LGPL-2.1-or-later.
 ---
 --- a/src/renderer.c
 +++ b/src/renderer.c
-@@ -2661,13 +2661,96 @@
+@@ -2661,13 +2661,95 @@
                                                    PL_INTENT_RELATIVE_COLORIMETRIC);
      pl_matrix3x3_apply(&tr, out_color);
      pl_color_delinearize(csp, out_color);
@@ -42,8 +42,7 @@ LGPL-2.1-or-later.
 +    pl_fmt scratch = pass->fbofmt[2];
 +    const pl_rect2d rect = pass->dst_rect;
 +
-+    if (y->texture->params.w != 1920 || y->texture->params.h != 1080 ||
-+        !original || !scratch || original->type != PL_FMT_FLOAT ||
++    if (!original || !scratch || original->type != PL_FMT_FLOAT ||
 +        original->component_depth[0] != 16 ||
 +        original->component_depth[1] != 16 ||
 +        original->component_depth[2] != 16 ||
@@ -119,7 +118,7 @@ LGPL-2.1-or-later.
  static int inline_nv12_output(struct pass_state *pass, float scale,
                                enum pl_nv12_output mode)
  {
-@@ -2719,6 +2802,13 @@
+@@ -2719,6 +2801,13 @@
          (translated && params->dither_params &&
           params->dither_params->method == PL_DITHER_WHITE_NOISE))
      {
@@ -133,7 +132,7 @@ LGPL-2.1-or-later.
          goto unsupported;
      }
  
-@@ -3110,7 +3200,7 @@
+@@ -3110,7 +3199,7 @@
              return false;
      }
  
@@ -142,7 +141,7 @@ LGPL-2.1-or-later.
           p < target->num_planes; p++) {
          const struct pl_plane *plane = &target->planes[p];
          float rx = (float) plane->texture->params.w / ref->texture->params.w,
-@@ -3155,7 +3245,8 @@
+@@ -3155,7 +3244,8 @@
                      .y0 = (ry0 - plane_rectf.y0) / rry,
                      .y1 = (ry1 - plane_rectf.y0) / rry,
                  },
@@ -152,7 +151,7 @@ LGPL-2.1-or-later.
              };
  
              if (!src.tex) {
-@@ -3192,6 +3283,9 @@
+@@ -3192,6 +3282,9 @@
  
          }
  
@@ -171,7 +170,7 @@ LGPL-2.1-or-later.
 +
 +    // libplacebo's own NV12 output (Mitchell chroma, unchanged) with Y written
 +    // during the color pass and UV kept in RG16F scratch. Assumes the fp16
-+    // attachment truncation measured on Intel ANV; 1920x1080 targets only.
++    // attachment truncation measured on Intel ANV; layout checks still apply.
 +    PL_NV12_OUTPUT_NATIVE,
  };
  

@@ -2,8 +2,8 @@ Fork only. Add the value native to the libplacebo filter option nv12_output
 when libplacebo defines PL_RENDERER_NV12_OUTPUT_NATIVE
 (patches/libplacebo/0002): libplacebo's own NV12 output (Mitchell chroma)
 with Y written during the color pass and UV kept in RG16F scratch. It
-assumes the fp16 attachment truncation measured on Intel ANV and covers
-1920x1080 targets; others keep the normal output path.
+assumes the fp16 attachment truncation measured on Intel ANV. Existing
+layout and capability checks retain the normal output path when unsupported.
 
 diff --git a/libavfilter/vf_libplacebo.c b/libavfilter/vf_libplacebo.c
 --- a/libavfilter/vf_libplacebo.c
