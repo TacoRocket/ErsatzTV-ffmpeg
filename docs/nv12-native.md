@@ -17,10 +17,16 @@ intermediate is the larger cost.
 
 Limits, stated in the patch: it assumes the fp16 attachment truncation
 measured on Intel ANV (Vulkan does not promise that rounding elsewhere), and
-it is gated to 1920x1080 output, full frame or an even-aligned rectangle
-inside bars. Other layouts keep the original output path. Output is
-byte-identical to the earlier producer-storage patch over 24 frames of the
-full-frame, pillarbox and letterbox fixtures.
+requires compatible NV12 planes, even-aligned picture rectangles, and writable
+GPU storage. The output follows the requested dimensions; there is no resolution
+allowlist. Unsupported layouts and capabilities keep the original output path.
+
+A bounded CRT comparison against ordinary NV12 output matched all 24 decoded
+frames for each full-frame, pillarbox and letterbox case at 1280x720, 1920x1080
+and 3840x2160. Logs confirmed that Native ran in all nine cases. An odd horizontal
+offset selected the fallback and matched another 24 frames. These checks establish
+picture parity on the tested Intel runtime, not other-driver compatibility, HDR
+parity at these sizes, or a speed improvement.
 
 Patches: `patches/libplacebo/0002-nv12-direct-output-native.patch`, applied
 after `0001-nv12-direct-output-match.patch`, adds `PL_NV12_OUTPUT_NATIVE`
