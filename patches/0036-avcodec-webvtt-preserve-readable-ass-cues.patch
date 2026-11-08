@@ -1,0 +1,294 @@
+diff --git a/fftools/ffmpeg_enc.c b/fftools/ffmpeg_enc.c
+index a595912..788e5c0 100644
+--- a/fftools/ffmpeg_enc.c
++++ b/fftools/ffmpeg_enc.c
+@@ -31,6 +31,7 @@
+ #include "libavutil/intreadwrite.h"
+ #include "libavutil/log.h"
+ #include "libavutil/mem.h"
++#include "libavutil/opt.h"
+ #include "libavutil/pixdesc.h"
+ #include "libavutil/rational.h"
+ #include "libavutil/time.h"
+@@ -440,6 +441,25 @@ static int do_subtitle_out(OutputFile *of, OutputStream *ost, const AVSubtitle *
+             return subtitle_out_size;
+         }
+ 
++        if (enc->codec_id == AV_CODEC_ID_WEBVTT) {
++            uint8_t *settings = NULL;
++
++            if (!subtitle_out_size) {
++                av_packet_unref(pkt);
++                continue;
++            }
++            ret = av_opt_get(enc, "cue_settings", AV_OPT_SEARCH_CHILDREN | AV_OPT_ALLOW_NULL, &settings);
++            if (ret < 0 && ret != AVERROR_OPTION_NOT_FOUND)
++                return ret;
++            if (settings) {
++                ret = av_packet_add_side_data(pkt, AV_PKT_DATA_WEBVTT_SETTINGS, settings, strlen(settings));
++                if (ret < 0) {
++                    av_free(settings);
++                    return ret;
++                }
++            }
++        }
++
+         av_shrink_packet(pkt, subtitle_out_size);
+         pkt->time_base = AV_TIME_BASE_Q;
+         pkt->pts       = sub->pts;
+diff --git a/libavcodec/ass_split.c b/libavcodec/ass_split.c
+index 3f8f5e7..a62ec94 100644
+--- a/libavcodec/ass_split.c
++++ b/libavcodec/ass_split.c
+@@ -505,6 +505,7 @@ int ff_ass_split_override_codes(const ASSCodesCallbacks *callbacks, void *priv,
+                 unsigned int color = 0xFFFFFFFF;
+                 int len, size = -1, an = -1, alpha = -1;
+                 int x1, y1, x2, y2, t1 = -1, t2 = -1;
++                double x, y;
+                 if (sscanf(buf, "\\%1[bisu]%1[01\\}]%n", style, c, &len) > 1) {
+                     int close = c[0] == '0' ? 1 : c[0] == '1' ? 0 : -1;
+                     len += close != -1;
+@@ -546,6 +547,9 @@ int ff_ass_split_override_codes(const ASSCodesCallbacks *callbacks, void *priv,
+                            sscanf(buf, "\\move(%d,%d,%d,%d,%d,%d)%1[\\}]%n", &x1, &y1, &x2, &y2, &t1, &t2, sep, &len) > 6) {
+                     if (callbacks->move)
+                         callbacks->move(priv, x1, y1, x2, y2, t1, t2);
++                } else if (callbacks->position &&
++                           sscanf(buf, "\\pos(%lf,%lf)%1[\\}]%n", &x, &y, sep, &len) == 3) {
++                    callbacks->position(priv, x, y);
+                 } else if (sscanf(buf, "\\pos(%d,%d)%1[\\}]%n", &x1, &y1, sep, &len) > 2) {
+                     if (callbacks->move)
+                         callbacks->move(priv, x1, y1, x1, y1, -1, -1);
+diff --git a/libavcodec/ass_split.h b/libavcodec/ass_split.h
+index 41191c0..bcb75bc 100644
+--- a/libavcodec/ass_split.h
++++ b/libavcodec/ass_split.h
+@@ -156,6 +156,8 @@ typedef struct {
+      * @{
+      */
+     void (*move)(void *priv, int x1, int y1, int x2, int y2, int t1, int t2);
++    /** A static \pos anchor, including fractional script coordinates. */
++    void (*position)(void *priv, double x, double y);
+     void (*origin)(void *priv, int x, int y);
+     /** @} */
+ 
+diff --git a/libavcodec/webvttenc.c b/libavcodec/webvttenc.c
+index d5d3ddd..63b6795 100644
+--- a/libavcodec/webvttenc.c
++++ b/libavcodec/webvttenc.c
+@@ -21,19 +21,27 @@
+  */
+ 
+ #include <stdarg.h>
++#include <stdlib.h>
+ #include "avcodec.h"
++#include "libavutil/avstring.h"
+ #include "libavutil/bprint.h"
++#include "libavutil/opt.h"
++#include "libavutil/mem.h"
+ #include "ass_split.h"
+ #include "ass.h"
+ #include "codec_internal.h"
+ 
+ #define WEBVTT_STACK_SIZE 64
+ typedef struct {
++    const AVClass *class;
+     AVCodecContext *avctx;
+     ASSSplitContext *ass_ctx;
+     AVBPrint buffer;
+     unsigned timestamp_end;
+     int count;
++    int alignment;
++    double x, y;
++    char *cue_settings;
+     char stack[WEBVTT_STACK_SIZE];
+     int stack_ptr;
+ } WebVTTContext;
+@@ -90,6 +98,7 @@ static void webvtt_stack_push_pop(WebVTTContext *s, const char c, int close)
+ static void webvtt_style_apply(WebVTTContext *s, const char *style)
+ {
+     ASSStyle *st = ff_ass_style_get(s->ass_ctx, style);
++    s->alignment = st ? st->alignment : 2;
+     if (st) {
+         if (st->bold != ASS_DEFAULT_BOLD) {
+             webvtt_print(s, "<b>");
+@@ -138,6 +147,41 @@ static void webvtt_end_cb(void *priv)
+     webvtt_stack_push_pop(priv, 0, 1);
+ }
+ 
++static void webvtt_position_cb(void *priv, double x, double y)
++{
++    WebVTTContext *s = priv;
++    s->x = x;
++    s->y = y;
++}
++
++static void webvtt_alignment_cb(void *priv, int alignment)
++{
++    WebVTTContext *s = priv;
++    s->alignment = alignment;
++}
++
++static int webvtt_set_position(WebVTTContext *s)
++{
++    const ASSScriptInfo *info = &((const ASS *)s->ass_ctx)->script_info;
++    static const char *const horizontal[] = { "left", "center", "right" };
++    static const char *const vertical[]   = { "end", "center", "start" };
++    int x, y, anchor;
++
++    if (info->play_res_x <= 0 || info->play_res_y <= 0 ||
++        !(s->x >= 0 && s->x <= info->play_res_x &&
++          s->y >= 0 && s->y <= info->play_res_y) ||
++        s->alignment < 1 || s->alignment > 9)
++        return 0;
++
++    anchor = s->alignment - 1;
++    x = (int)(1000 * s->x / info->play_res_x + 0.5);
++    y = (int)(1000 * s->y / info->play_res_y + 0.5);
++    s->cue_settings = av_asprintf("line:%d.%d%%,%s position:%d.%d%% align:%s",
++                                  y / 10, y % 10, vertical[anchor / 3],
++                                  x / 10, x % 10, horizontal[anchor % 3]);
++    return s->cue_settings ? 0 : AVERROR(ENOMEM);
++}
++
+ static const ASSCodesCallbacks webvtt_callbacks = {
+     .text             = webvtt_text_cb,
+     .new_line         = webvtt_new_line_cb,
+@@ -145,12 +189,73 @@ static const ASSCodesCallbacks webvtt_callbacks = {
+     .color            = NULL,
+     .font_name        = NULL,
+     .font_size        = NULL,
+-    .alignment        = NULL,
++    .alignment        = webvtt_alignment_cb,
+     .cancel_overrides = webvtt_cancel_overrides_cb,
+-    .move             = NULL,
++    .position         = webvtt_position_cb,
+     .end              = webvtt_end_cb,
+ };
+ 
++/* ASS drawings are commands, not caption text. Karaoke Templater also
++ * marks its generated events "fx"; clipped, positioned one- or two-letter
++ * fragments of these effects become independent captions if flattened. */
++static int webvtt_strip_ass_artwork(ASSDialog *dialog)
++{
++    char *src = dialog->text, *dst = src;
++    int fx = dialog->effect && !strcmp(dialog->effect, "fx");
++    int positioned = 0, clipped = 0, drawing = 0, had_drawing = 0;
++    size_t text_bytes = 0;
++    int letters_only = 1;
++
++    if (!src || (!fx && !strstr(src, "\\p")))
++        return 0;
++
++    while (*src) {
++        if (*src == '{' && src[1] == '\\') {
++            const char *end = strchr(src + 2, '}');
++            size_t len;
++            int depth = 0;
++            if (!end) {
++                memmove(dst, src, strlen(src) + 1);
++                return 0;
++            }
++            for (const char *tag = src + 1; tag < end; tag++) {
++                if (*tag == '(') {
++                    depth++;
++                } else if (*tag == ')' && depth) {
++                    depth--;
++                } else if (!depth && *tag == '\\') {
++                    if (tag[1] == 'p' && av_isdigit(tag[2]))
++                        drawing = strtol(tag + 2, NULL, 10) > 0;
++                    else if (tag[1] == 'r')
++                        drawing = 0;
++                    else if (fx && (!strncmp(tag, "\\pos(", 5) ||
++                                    !strncmp(tag, "\\move(", 6)))
++                        positioned = 1;
++                    else if (fx && !strncmp(tag, "\\clip(", 6))
++                        clipped = 1;
++                }
++            }
++            len = end + 1 - src;
++            if (dst != src)
++                memmove(dst, src, len);
++            dst += len;
++            src += len;
++        } else if (drawing) {
++            had_drawing = 1;
++            src++;
++        } else {
++            int ch = av_tolower(*src);
++            letters_only &= ch == ' ' || (ch >= 'a' && ch <= 'z');
++            text_bytes++;
++            *dst++ = *src++;
++        }
++    }
++    *dst = 0;
++    return (had_drawing && !text_bytes) ||
++           (!had_drawing && fx && positioned && clipped &&
++            letters_only && text_bytes <= 2);
++}
++
+ static int webvtt_encode_frame(AVCodecContext *avctx,
+                                unsigned char *buf, int bufsize, const AVSubtitle *sub)
+ {
+@@ -158,6 +263,7 @@ static int webvtt_encode_frame(AVCodecContext *avctx,
+     ASSDialog *dialog;
+     int i;
+ 
++    av_freep(&s->cue_settings);
+     av_bprint_init_for_buffer(&s->buffer, buf, bufsize);
+ 
+     for (i=0; i<sub->num_rects; i++) {
+@@ -171,6 +277,11 @@ static int webvtt_encode_frame(AVCodecContext *avctx,
+         dialog = ff_ass_split_dialog(s->ass_ctx, ass);
+         if (!dialog)
+             return AVERROR(ENOMEM);
++        if (webvtt_strip_ass_artwork(dialog)) {
++            ff_ass_free_dialog(&dialog);
++            continue;
++        }
++        s->x = s->y = -1;
+         webvtt_style_apply(s, dialog->style);
+         ff_ass_split_override_codes(&webvtt_callbacks, s, dialog->text);
+         ff_ass_free_dialog(&dialog);
+@@ -184,6 +295,11 @@ static int webvtt_encode_frame(AVCodecContext *avctx,
+         return AVERROR_BUFFER_TOO_SMALL;
+     }
+ 
++    if (sub->num_rects == 1) {
++        int ret = webvtt_set_position(s);
++        if (ret < 0)
++            return ret;
++    }
+     return s->buffer.len;
+ }
+ 
+@@ -202,12 +318,30 @@ static av_cold int webvtt_encode_init(AVCodecContext *avctx)
+     return s->ass_ctx ? 0 : AVERROR_INVALIDDATA;
+ }
+ 
++// The subtitle encoder API returns a text buffer. The muxer takes cue
++// settings separately as AV_PKT_DATA_WEBVTT_SETTINGS on the encoded packet.
++static const AVOption webvtt_options[] = {
++    { "cue_settings", "WebVTT settings for the last encoded cue",
++      offsetof(WebVTTContext, cue_settings), AV_OPT_TYPE_STRING, { .str = NULL },
++      0, 0, AV_OPT_FLAG_SUBTITLE_PARAM | AV_OPT_FLAG_ENCODING_PARAM |
++            AV_OPT_FLAG_EXPORT | AV_OPT_FLAG_READONLY },
++    { NULL }
++};
++
++static const AVClass webvtt_class = {
++    .class_name = "WebVTT encoder",
++    .item_name  = av_default_item_name,
++    .option     = webvtt_options,
++    .version    = LIBAVUTIL_VERSION_INT,
++};
++
+ const FFCodec ff_webvtt_encoder = {
+     .p.name         = "webvtt",
+     CODEC_LONG_NAME("WebVTT subtitle"),
+     .p.type         = AVMEDIA_TYPE_SUBTITLE,
+     .p.id           = AV_CODEC_ID_WEBVTT,
+     .priv_data_size = sizeof(WebVTTContext),
++    .p.priv_class   = &webvtt_class,
+     .init           = webvtt_encode_init,
+     FF_CODEC_ENCODE_SUB_CB(webvtt_encode_frame),
+     .close          = webvtt_encode_close,
