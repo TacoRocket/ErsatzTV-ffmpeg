@@ -1,0 +1,26 @@
+id: ass-webvtt-cues
+patch: 0036-avcodec-webvtt-preserve-readable-ass-cues.patch
+based_on: n8.1.2
+status: experimental-fork-only
+upstream:
+  issue: null
+  commits: []
+dependencies: []
+platforms:
+  - all
+reproducer: tests/ass-webvtt-cues.sh
+failure_without_patch:
+  - "Clipped, positioned glyph effects and vector paths are emitted as caption text."
+  - "Simultaneous title fragments lose their separate authored positions."
+success_with_patch:
+  - "The encoder retains readable text and timing, including short ordinary lines and text adjacent to a drawing."
+  - "With a declared script canvas, the FFmpeg CLI carries a static in-bounds position and alignment as WebVTT packet side data."
+notes:
+  - "Suppression of letter fragments applies to events marked fx with both clipping and explicit placement or motion, containing at most two ASCII letters or spaces."
+  - "The encoder does not reconstruct animated layouts, merge duplicate title layers, or infer missing translations. Players control subtitle fonts and final layout."
+  - "FFmpeg commit 4eb9cb07d9e8 converts karaoke timing tags. The observed effects were already split into individual ASS events without those tags."
+last_verified:
+  version: n8.1.2
+  date: 2026-11-08
+  how: "Compared full episodes from two series with the same source build before and after the patch. Both embedded Matroska and extracted ASS produced identical patched cues. On two further randomly selected episodes, text and timing were identical for all 838 cues across three tracks."
+remove_when: "The shared FFmpeg WebVTT conversion handles positioned ASS text, drawings and split glyph effects on the reproducer."
