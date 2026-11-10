@@ -71,9 +71,8 @@ than 400. It was judged on stills, not in motion. The picture results in
 [the experiment](../../experiments/vaapi-tonemap-picture/README.md) describe the
 1000 table and are not this package's picture.
 
-The asset is still named `hable-1000-65.bin` and the filter's one-line description
-still says 1000. Both live in the C source and are left for a change that rebuilds
-and runs the filter.
+The 500-nit table keeps the filename `hable-1000-65.bin` for compatibility
+with existing installations and bind mounts.
 
 ## Upgrade boundary
 
