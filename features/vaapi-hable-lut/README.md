@@ -103,6 +103,42 @@ The C filter rejects other input encodings and removes HDR metadata from its SDR
 frames and output link. It does not infer missing color tags or apply Dolby Vision
 metadata. Fixed peak and gamut handling have the same limitations as the probe.
 
+### Input height
+
+On Intel Gen12 the video-enhance engine (VEBOX) can hang when its 3D LUT runs on
+an input whose height is not a multiple of 8. The kernel logs
+`GPU HANG ... in vf#0:0` on `vecs0` and resets the context; FFmpeg then fails
+with `HW busy` or stops producing frames. Whether a given clip hangs depends on
+its content, so a height can pass on one title and hang on another.
+
+Intel's driver knows the defect: iHD forces the VEBOX input height to a multiple
+of 8 for 3D LUT work (`Wa_16021308716` in `vp_scaling_filter.cpp`), but only when
+its scaler runs in the same pass and only for some heights. This filter converts
+without scaling, so that workaround never applies to it.
+
+The filter therefore never gives the LUT such a height:
+
+- **Height is a multiple of 8** (2160, 1080, 800, 720, 544, 480, 360): one pass,
+  as before. Surfaces and output are unchanged.
+- **Any other height** (1084, 804, 540, 404): the picture is first copied,
+  unscaled, into the top of a surface whose height is the next multiple of 8.
+  The LUT then runs on that surface. The output frame keeps the picture height;
+  its surface is the taller one, as decoder output is for a cropped stream. The
+  extra rows are black and are never part of the frame.
+
+Callers need no change and the output bytes are the same as before for every
+height that did not hang. The copy is one extra VPP pass on those heights only;
+on the test machine it cost about 5% of uncapped speed at 1920x804 and up to 20%
+at 960x540. A caller that can choose its sizes avoids it by handing the filter a
+height that is a multiple of 8, for example by padding before the filter instead
+of after. The copy uses its own VA context: sharing one context with the LUT
+pass produced pictures without the LUT applied.
+
+Measured on one Alder Lake-P machine (iHD 26.1.5, i915 with GuC): heights with a
+remainder of 2 or 4 hung on every clip tried, sooner or later; a remainder of 6
+did not hang in six runs and a remainder of 0 never did. All non-multiples are
+treated the same.
+
 The original isolated probe's picture and resource results are in
 [the experiment](../../experiments/vaapi-tonemap-picture/README.md). Those numbers
 are not new measurements of this package. Package validation is checkpointed

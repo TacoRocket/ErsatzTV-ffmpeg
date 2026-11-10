@@ -27,15 +27,32 @@
 #include "vaapi_vpp.h"
 #include "video.h"
 
+/* Intel VEBOX can hang the video-enhance engine when the 3D LUT runs on an input
+ * whose height is not a multiple of 8. iHD forces that alignment itself only on
+ * its scaler path (Wa_16021308716), which this filter does not use, so the filter
+ * never hands the LUT such a height. See the module README. */
+#define LUT_HEIGHT_ALIGN 8
+
 typedef struct HableLUTVAAPIContext {
     VAAPIVPPContext vpp_ctx; /* Must be first for the shared VPP lifecycle. */
     VASurfaceID lut_surface;
+    /* P010 surfaces of the aligned height; NULL when the input height is already aligned. */
+    AVBufferRef *stage_frames_ref;
+    /* The copy into those surfaces has its own context. With the copy and the LUT
+     * alternating in one context, iHD 26.1.5 left the LUT out of every picture after
+     * the first; the cause inside the driver was not traced. */
+    VAContextID stage_context;
 } HableLUTVAAPIContext;
 
 static void lut_pipeline_uninit(AVFilterContext *avctx)
 {
     HableLUTVAAPIContext *ctx = avctx->priv;
     VAAPIVPPContext *vpp = &ctx->vpp_ctx;
+    av_buffer_unref(&ctx->stage_frames_ref);
+    if (ctx->stage_context != VA_INVALID_ID && vpp->hwctx) {
+        vaDestroyContext(vpp->hwctx->display, ctx->stage_context);
+        ctx->stage_context = VA_INVALID_ID;
+    }
     if (ctx->lut_surface != VA_INVALID_ID && vpp->hwctx) {
         vaDestroySurfaces(vpp->hwctx->display, &ctx->lut_surface, 1);
         ctx->lut_surface = VA_INVALID_ID;
@@ -149,8 +166,10 @@ static int lut_filter_frame(AVFilterLink *inlink, AVFrame *input)
 {
     AVFilterContext *avctx = inlink->dst;
     AVFilterLink *outlink = avctx->outputs[0];
-    VAAPIVPPContext *vpp = avctx->priv;
-    AVFrame *output = NULL;
+    HableLUTVAAPIContext *ctx = avctx->priv;
+    VAAPIVPPContext *vpp = &ctx->vpp_ctx;
+    AVFrame *output = NULL, *staged = NULL;
+    const AVFrame *source = input;
     VAProcPipelineParameterBuffer params;
     int err = AVERROR(EINVAL);
 
@@ -166,7 +185,8 @@ static int lut_filter_frame(AVFilterLink *inlink, AVFrame *input)
     if (vpp->va_context == VA_INVALID_ID)
         goto fail;
 
-    output = ff_get_video_buffer(outlink, vpp->output_width, vpp->output_height);
+    /* The surface may be taller than the picture; the frame keeps the picture height. */
+    output = ff_get_video_buffer(outlink, outlink->w, outlink->h);
     if (!output) {
         err = AVERROR(ENOMEM);
         goto fail;
@@ -184,7 +204,36 @@ static int lut_filter_frame(AVFilterLink *inlink, AVFrame *input)
     av_frame_remove_side_data(output, AV_FRAME_DATA_DOVI_RPU_BUFFER);
     av_frame_remove_side_data(output, AV_FRAME_DATA_DOVI_METADATA);
 
-    err = ff_vaapi_vpp_init_params(avctx, &params, input, output);
+    if (ctx->stage_frames_ref) {
+        /* Copy the picture unscaled into the top of a taller surface; the rows
+         * below it are black and never leave the filter. */
+        VARectangle picture = { .width = outlink->w, .height = outlink->h };
+        const VAContextID lut_context = vpp->va_context;
+
+        staged = av_frame_alloc();
+        if (!staged) {
+            err = AVERROR(ENOMEM);
+            goto fail;
+        }
+        err = av_hwframe_get_buffer(ctx->stage_frames_ref, staged, 0);
+        if (err < 0)
+            goto fail;
+        err = av_frame_copy_props(staged, input);
+        if (err < 0)
+            goto fail;
+        err = ff_vaapi_vpp_init_params(avctx, &params, input, staged);
+        if (err < 0)
+            goto fail;
+        params.output_region = &picture;
+        vpp->va_context = ctx->stage_context;
+        err = ff_vaapi_vpp_render_picture(avctx, &params, staged);
+        vpp->va_context = lut_context;
+        if (err < 0)
+            goto fail;
+        source = staged;
+    }
+
+    err = ff_vaapi_vpp_init_params(avctx, &params, source, output);
     if (err < 0)
         goto fail;
     params.filters = vpp->filter_buffers;
@@ -192,9 +241,11 @@ static int lut_filter_frame(AVFilterLink *inlink, AVFrame *input)
     err = ff_vaapi_vpp_render_picture(avctx, &params, output);
     if (err < 0)
         goto fail;
+    av_frame_free(&staged);
     av_frame_free(&input);
     return ff_filter_frame(outlink, output);
 fail:
+    av_frame_free(&staged);
     av_frame_free(&input);
     av_frame_free(&output);
     return err;
@@ -202,9 +253,49 @@ fail:
 
 static int lut_config_output(AVFilterLink *outlink)
 {
-    int err = ff_vaapi_vpp_config_output(outlink);
+    AVFilterContext *avctx = outlink->src;
+    AVFilterLink *inlink = avctx->inputs[0];
+    HableLUTVAAPIContext *ctx = avctx->priv;
+    VAAPIVPPContext *vpp = &ctx->vpp_ctx;
+    const int aligned_height = FFALIGN(inlink->h, LUT_HEIGHT_ALIGN);
+    VAStatus vas;
+    int err;
+
+    /* Output surfaces use the aligned height; the link and its frames keep the
+     * picture height, as decoder output does for a cropped stream. */
+    vpp->output_width  = inlink->w;
+    vpp->output_height = aligned_height;
+    err = ff_vaapi_vpp_config_output(outlink);
     if (err < 0)
         return err;
+    outlink->h = inlink->h;
+    if (aligned_height != inlink->h) {
+        AVHWFramesContext *stage;
+
+        ctx->stage_frames_ref = av_hwframe_ctx_alloc(vpp->device_ref);
+        if (!ctx->stage_frames_ref)
+            return AVERROR(ENOMEM);
+        stage = (AVHWFramesContext *)ctx->stage_frames_ref->data;
+        stage->format    = AV_PIX_FMT_VAAPI;
+        stage->sw_format = AV_PIX_FMT_P010;
+        stage->width     = inlink->w;
+        stage->height    = aligned_height;
+        err = av_hwframe_ctx_init(ctx->stage_frames_ref);
+        if (err < 0) {
+            av_buffer_unref(&ctx->stage_frames_ref);
+            return err;
+        }
+        vas = vaCreateContext(vpp->hwctx->display, vpp->va_config, inlink->w, aligned_height,
+                              VA_PROGRESSIVE, NULL, 0, &ctx->stage_context);
+        if (vas != VA_STATUS_SUCCESS) {
+            av_log(avctx, AV_LOG_ERROR, "Failed to create the LUT staging context: %s\n", vaErrorStr(vas));
+            ctx->stage_context = VA_INVALID_ID;
+            av_buffer_unref(&ctx->stage_frames_ref);
+            return AVERROR(EIO);
+        }
+        av_log(avctx, AV_LOG_VERBOSE, "Input height %d is not a multiple of %d; "
+               "running the LUT on %d rows\n", inlink->h, LUT_HEIGHT_ALIGN, aligned_height);
+    }
     outlink->colorspace = AVCOL_SPC_BT709;
     outlink->color_range = AVCOL_RANGE_MPEG;
     av_frame_side_data_remove(&outlink->side_data, &outlink->nb_side_data,
@@ -225,6 +316,7 @@ static av_cold int lut_init(AVFilterContext *avctx)
     HableLUTVAAPIContext *ctx = avctx->priv;
     ff_vaapi_vpp_ctx_init(avctx);
     ctx->lut_surface = VA_INVALID_ID;
+    ctx->stage_context = VA_INVALID_ID;
     ctx->vpp_ctx.pipeline_uninit = lut_pipeline_uninit;
     ctx->vpp_ctx.build_filter_params = lut_build_params;
     ctx->vpp_ctx.output_format = AV_PIX_FMT_NV12;
