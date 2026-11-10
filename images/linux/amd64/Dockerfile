@@ -232,7 +232,7 @@ RUN --mount=type=bind,source=scripts/verify-ffmpeg.sh,target=/tmp/verify-ffmpeg.
     sh /tmp/verify-ffmpeg.sh /usr/local/bin "${FFMPEG_VERSION}" "${FFMPEG_EXTRA_VERSION}" && \
     if [ "$VAAPI_HABLE_LUT" = 1 ]; then \
       ffmpeg -hide_banner -filters | grep -q ' tonemap_vaapi_lut ' && \
-      echo 'fe0ae520b07eefc79f26e22c97720ff441573c3dba85336665206e5fa9cfbbef  /usr/local/share/ffmpeg/luts/hable-1000-65.bin' | sha256sum -c -; \
+      echo 'f187c928cd30528fb8c076ce885001da45580fcbb9cf223fdd8282fdf74d42d5  /usr/local/share/ffmpeg/luts/hable-1000-65.bin' | sha256sum -c -; \
     fi
 
 CMD         ["--help"]
