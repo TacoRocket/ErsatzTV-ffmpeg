@@ -335,7 +335,7 @@ static const AVFilterPad lut_outputs[] = {
 };
 const FFFilter ff_vf_tonemap_vaapi_lut = {
     .p.name = "tonemap_vaapi_lut",
-    .p.description = NULL_IF_CONFIG_SMALL("Fixed 1000-nit Hable HDR10 to SDR using a VAAPI 3D LUT"),
+    .p.description = NULL_IF_CONFIG_SMALL("Fixed Hable HDR10 to SDR using a VAAPI 3D LUT"),
     .p.priv_class = &tonemap_vaapi_lut_class,
     .priv_size = sizeof(HableLUTVAAPIContext),
     .init = lut_init,

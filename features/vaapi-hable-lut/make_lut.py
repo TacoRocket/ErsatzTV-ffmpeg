@@ -15,7 +15,10 @@ MATRIX = (
     (-0.12455047452159052, 1.1328998971259603, -0.00834942260436948),
     (-0.018150763354905234, -0.10057889800800746, 1.1187296613629127),
 )
-EXPECTED_SHA256 = "fe0ae520b07eefc79f26e22c97720ff441573c3dba85336665206e5fa9cfbbef"
+# Brightness at which the curve reaches full output. Lower is a brighter picture with less room
+# for highlights; see "Table brightness" in README.md for how 500 was chosen.
+PEAK_NITS = 500
+EXPECTED_SHA256 = "f187c928cd30528fb8c076ce885001da45580fcbb9cf223fdd8282fdf74d42d5"
 
 
 def pq(value):
@@ -30,7 +33,7 @@ def hable(value):
 def generate():
     linear = [pq(i / 64) for i in range(65)]
     table = bytearray()
-    peak = hable(10.0)  # 1000 nits / FFmpeg's 100-nit reference white.
+    peak = hable(PEAK_NITS / 100)  # FFmpeg's reference white is 100 nits.
     for red in linear:
         for green in linear:
             for blue in linear:

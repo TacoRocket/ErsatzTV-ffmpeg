@@ -2,7 +2,7 @@
 
 This module implements a **3D lookup table (3D LUT)** through VAAPI's video
 processing API. It converts limited-range P010 BT.2020 NCL/PQ into limited-range
-BT.709 NV12. The table uses fixed 1000-nit Hable, a BT.2020-to-BT.709 gamut matrix,
+BT.709 NV12. The table uses fixed 500-nit Hable, a BT.2020-to-BT.709 gamut matrix,
 and FFmpeg's BT.1886 output math. It does **not** perform OpenCL's scene adaptation.
 It is an optional alternative, not a pixel-identical replacement for normal OpenCL.
 
@@ -10,7 +10,7 @@ It is an optional alternative, not a pixel-identical replacement for normal Open
 FFmpeg's `vaapi_vpp` device, frame and submission code. `register.patch` only
 registers the source and checks for the libva 3D-LUT type. The stock VAAPI and
 OpenCL filters are unchanged by this module. `make_lut.py` generates the table
-using Python's standard library and checks its SHA256 against the accepted probe.
+using Python's standard library and checks its SHA256 against the reviewed table.
 The runtime needs neither Python nor an external asset mount or service.
 
 ## Build and select
@@ -32,6 +32,47 @@ Unset/0 keeps the existing preference (OpenCL by default). Other input formats
 keep the existing path. Missing FFmpeg support logs a warning and uses the
 configured tone mapper. A driver/layout or asset failure after selecting the
 filter is an explicit FFmpeg error, not a silent picture substitution.
+
+## Table brightness
+
+The curve reaches full output at 500 nits (`PEAK_NITS` in `make_lut.py`). It was
+1000 at first, because the table was built to copy the OpenCL setting `peak=10`
+with its scene detection removed. That copy came out darker than a mapper that
+adapts to each scene, and no other value had been tried.
+
+A fixed table has one trade to make. Output levels spent on highlights are not
+available for everything else, so a lower peak gives a brighter picture and less
+room above it. Anything brighter than the peak comes out at full level.
+
+Measured on one Alder Lake-P machine with the packaged filter, only the table
+file changed. 45 stills at 1280x720 from 15 clips of 4K HDR10 and Dolby Vision
+film: dark, ordinary, one very bright title (MaxCLL 9918), and three titles
+chosen for strong colour. The reference is libplacebo `tonemapping=linear` with
+peak detection and the Dolby Vision data ignored. Brightness is the mean luma
+difference as a share of the reference's mean luma above black, letterbox excluded.
+
+| Peak | Mean | Stills more than 10% darker | Stills more than 10% brighter | Range |
+|---|---:|---:|---:|---|
+| 1000 | -10% | 29 | 3 | -21% to +16% |
+| 500 | -1% | 7 | 9 | -13% to +27% |
+| 400 | +3% | 0 | 11 | -10% to +32% |
+
+- **Highlights.** With the sun in frame the reference puts 2.7% of the picture
+  within ten steps of white; 500 puts none there and 400 puts 1.7%.
+- **Bright, saturated colour.** Every fixed table is paler than the reference in
+  these areas. On the pastel title the loss is 20 to 24% at 1000, 12 to 16% at
+  500 and 9 to 13% at 400, so a lower peak is the less washed one.
+- **Colour pushed to its limit.** In the neon still where the tables add the most,
+  1.7% of the picture has a colour channel at maximum at 500, against 0.9% for the
+  reference and 5.6% at 400.
+
+500 sits nearest the reference on average and keeps more room for neon colour
+than 400. It was judged on stills, not in motion. The picture results in
+[the experiment](../../experiments/vaapi-tonemap-picture/README.md) describe the
+1000 table and are not this package's picture.
+
+The 500-nit table keeps the filename `hable-1000-65.bin` for compatibility
+with existing installations and bind mounts.
 
 ## Upgrade boundary
 
