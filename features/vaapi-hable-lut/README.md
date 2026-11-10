@@ -102,3 +102,62 @@ The original isolated probe's picture and resource results are in
 are not new measurements of this package. Package validation is checkpointed
 separately. Intel libva-utils and FFmpeg attribution is in [THIRD_PARTY.md](THIRD_PARTY.md)
 and is included in the image beside the generated asset.
+
+## Probe: per-scene tables for Dolby Vision (`scene=1`)
+
+**Status: probe. Off by default, not packaged, not for release.**
+
+The fixed table assumes every scene peaks at 1000 nits, so most scenes come out
+darker than the libplacebo path shows them. For Dolby Vision, libplacebo's
+`linear` curve takes one number per frame: the level 1 maximum from the Dolby
+metadata, with a floor of 100 nits. That number steps at shot cuts and is flat
+between them.
+
+With `tonemap_vaapi_lut=scene=1` the filter reads the same number from each
+frame and runs the 3D LUT with a table made for it:
+
+- **Table pack.** `luts/scene-linear-65.bin` holds 26 tables, one per peak from
+  100 to 10000 nits. Each was sampled from libplacebo, not computed, so it
+  carries libplacebo's curve and gamut mapping as they are.
+- **Blend.** For a peak between two pack entries the filter blends the two
+  tables. The curve is a straight stretch in PQ, so the weight is linear in
+  `1 / PQ(peak)`.
+- **Swap.** Three LUT surfaces are kept. A new peak writes its table into the
+  least recently used one; a peak seen recently reuses its surface.
+- **Fail open.** `scene=0`, a missing or malformed pack, a frame without level 1
+  metadata, or a failed table write all give the fixed table.
+
+Build the pack on a machine whose FFmpeg has libplacebo and Vulkan:
+
+```sh
+python3 probe/scene_pack.py grid grid.gbrp
+for peak in $(python3 probe/scene_pack.py ladder); do
+  ffmpeg -f rawvideo -pix_fmt gbrp12le -s 4225x65 -r 1 -i grid.gbrp -frames:v 1 \
+    -c:v libx265 -color_range pc -x265-params \
+    "lossless=1:master-display=G(8500,39850)B(6550,2300)R(35400,14600)WP(15635,16450)L(${peak}0000,1):max-cll=${peak},$((peak / 4))" \
+    grid-$peak.mkv
+  ffmpeg -init_hw_device vulkan=vk -filter_hw_device vk -i grid-$peak.mkv -frames:v 1 -vf \
+    "setparams=color_primaries=bt2020:color_trc=smpte2084,libplacebo=tonemapping=linear:colorspace=bt709:color_primaries=bt709:color_trc=bt709:peak_detect=0:contrast_recovery=0:dithering=-1:format=gbrp16le" \
+    -f rawvideo -pix_fmt gbrp16le tables/x-$peak.gbrp16
+done
+python3 probe/scene_pack.py pack tables scene-linear-65.bin
+```
+
+Install it as `/usr/local/share/ffmpeg/luts/scene-linear-65.bin` (43 MB).
+
+Measured on one Alder Lake-P machine against the libplacebo chain it replaces,
+five Dolby Vision clips (four profile 8.1, one profile 7), 4K sources:
+
+- The filter's per-frame peak equals libplacebo's on every frame of all five
+  clips, and changes on the same frame.
+- 148 frames at 960x540, including the three frames around each of 30 shot cuts:
+  mean luma difference 0.34 of an 8-bit step, worst frame 0.74. The fixed table
+  differs by 1 to 9 steps on the same clips.
+- 4K to 1080p into `h264_vaapi`: 4.5x with the fixed table, 4.5x with scene
+  tables, 3.5x to 3.75x with libplacebo. A table takes 2 to 10 ms to build and
+  is built once per new peak.
+
+Not done: packaging or generating the pack in the build; sources without Dolby
+metadata (libplacebo measures those frame by frame); libplacebo's contrast
+recovery, which a table cannot do; profile 5; any GPU but the one above; long
+runs and real channel playback.
